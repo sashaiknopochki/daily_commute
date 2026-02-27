@@ -57,6 +57,7 @@ export default function Dashboard() {
     fetcher,
     {
       refreshInterval: 300000, // 5 minutes
+      shouldRetryOnError: false,
       revalidateOnFocus: false,
       revalidateOnReconnect: true,
       onSuccess: (data) => {
@@ -172,6 +173,7 @@ function DestinationCard({
     fetcher,
     {
       refreshInterval: 300000,
+      shouldRetryOnError: false,
       revalidateOnFocus: false
     }
   )
@@ -181,7 +183,8 @@ function DestinationCard({
 
   const { data: alternativesData } = useSWR(
     disruption.isDisrupted && homeStopId ? `/api/journeys?from=${homeStopId}&to=${destination.stopId}` : null,
-    fetcher
+    fetcher,
+    { shouldRetryOnError: false }
   )
 
   const statusColor = disruption.isDisrupted ? "destructive" : isUnknown ? "secondary" : "default"
