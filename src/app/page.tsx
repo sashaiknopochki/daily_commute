@@ -1,6 +1,6 @@
 import { cookies } from "next/headers"
 import { redirect } from "next/navigation"
-import { kv } from "@vercel/kv"
+import { redis } from "@/lib/redis"
 import { Plus, AlertTriangle } from "lucide-react"
 import { DeviceData } from "@/types"
 import { refreshJourney, getJourneys, detectDisruption, extractRouteSummary } from "@/lib/bvg"
@@ -23,7 +23,7 @@ export default async function Dashboard() {
 
   let deviceData: DeviceData | null = null
   try {
-    deviceData = await kv.get<DeviceData>(`device:${deviceId}`)
+    deviceData = await redis.get<DeviceData>(`device:${deviceId}`)
   } catch {
     // KV unavailable — treat as new device
   }

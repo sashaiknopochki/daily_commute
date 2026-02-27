@@ -1,4 +1,4 @@
-import { kv } from '@vercel/kv';
+import { redis } from '@/lib/redis';
 import { DeviceData, HomeStop } from '@/types';
 
 export async function POST(request: Request) {
@@ -10,7 +10,7 @@ export async function POST(request: Request) {
     }
 
     try {
-        let data = await kv.get<DeviceData>(`device:${deviceId}`);
+        let data = await redis.get<DeviceData>(`device:${deviceId}`);
         if (!data) {
             data = {
                 deviceId,
@@ -21,7 +21,7 @@ export async function POST(request: Request) {
         }
 
         data.home = home;
-        await kv.set(`device:${deviceId}`, data);
+        await redis.set(`device:${deviceId}`, data);
         return Response.json(data);
     } catch (error) {
         return Response.json({ error: 'Storage error' }, { status: 500 });

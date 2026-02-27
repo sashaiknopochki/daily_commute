@@ -1,6 +1,6 @@
 import { cookies } from "next/headers"
 import { redirect } from "next/navigation"
-import { kv } from "@vercel/kv"
+import { redis } from "@/lib/redis"
 import { ArrowLeft } from "lucide-react"
 import { DeviceData } from "@/types"
 import { getJourneys, extractRouteSummary } from "@/lib/bvg"
@@ -31,7 +31,7 @@ export default async function NewDestinationPage({
     const deviceId = cookieStore.get("device_id")?.value
     if (!deviceId) redirect("/")
 
-    const deviceData = await kv.get<DeviceData>(`device:${deviceId}`)
+    const deviceData = await redis.get<DeviceData>(`device:${deviceId}`)
     if (!deviceData?.home) redirect("/setup")
 
     let journeys: any[] = []

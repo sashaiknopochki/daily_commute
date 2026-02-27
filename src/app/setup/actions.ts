@@ -2,7 +2,7 @@
 
 import { cookies } from "next/headers"
 import { redirect } from "next/navigation"
-import { kv } from "@vercel/kv"
+import { redis } from "@/lib/redis"
 import { geocode, getNearbyStops } from "@/lib/bvg"
 import { DeviceData } from "@/types"
 
@@ -32,12 +32,12 @@ export async function setupHome(formData: FormData) {
       stopName: stops[0].name as string,
     }
 
-    let data = await kv.get<DeviceData>(`device:${deviceId}`)
+    let data = await redis.get<DeviceData>(`device:${deviceId}`)
     if (!data) {
       data = { deviceId, home: null, destinations: [], createdAt: new Date().toISOString() }
     }
     data.home = home
-    await kv.set(`device:${deviceId}`, data)
+    await redis.set(`device:${deviceId}`, data)
   } catch (e: any) {
     errorMsg = e.message ?? "Something went wrong"
   }

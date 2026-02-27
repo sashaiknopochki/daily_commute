@@ -1,4 +1,4 @@
-import { kv } from '@vercel/kv';
+import { redis } from '@/lib/redis';
 import { DeviceData } from '@/types';
 
 export async function PATCH(
@@ -14,14 +14,14 @@ export async function PATCH(
     }
 
     try {
-        const data = await kv.get<DeviceData>(`device:${deviceId}`);
+        const data = await redis.get<DeviceData>(`device:${deviceId}`);
         if (!data) return Response.json({ error: 'Device not found' }, { status: 404 });
 
         const index = data.destinations.findIndex(d => d.id === id);
         if (index === -1) return Response.json({ error: 'Destination not found' }, { status: 404 });
 
         data.destinations[index] = { ...data.destinations[index], ...updates };
-        await kv.set(`device:${deviceId}`, data);
+        await redis.set(`device:${deviceId}`, data);
         return Response.json(data.destinations[index]);
     } catch (error) {
         return Response.json({ error: 'Storage error' }, { status: 500 });
@@ -41,11 +41,11 @@ export async function DELETE(
     }
 
     try {
-        const data = await kv.get<DeviceData>(`device:${deviceId}`);
+        const data = await redis.get<DeviceData>(`device:${deviceId}`);
         if (!data) return Response.json({ error: 'Device not found' }, { status: 404 });
 
         data.destinations = data.destinations.filter(d => d.id !== id);
-        await kv.set(`device:${deviceId}`, data);
+        await redis.set(`device:${deviceId}`, data);
         return Response.json({ success: true });
     } catch (error) {
         return Response.json({ error: 'Storage error' }, { status: 500 });

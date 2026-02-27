@@ -2,7 +2,7 @@
 
 import { cookies } from "next/headers"
 import { redirect } from "next/navigation"
-import { kv } from "@vercel/kv"
+import { redis } from "@/lib/redis"
 import { geocode, getNearbyStops } from "@/lib/bvg"
 import { DeviceData, Destination, RouteSummary } from "@/types"
 
@@ -81,7 +81,7 @@ export async function saveDestination(formData: FormData) {
 
   let errorMsg: string | null = null
   try {
-    let data = await kv.get<DeviceData>(`device:${deviceId}`)
+    let data = await redis.get<DeviceData>(`device:${deviceId}`)
     if (!data) throw new Error("Device not found — please set up again")
 
     const dest: Destination = {
@@ -90,7 +90,7 @@ export async function saveDestination(formData: FormData) {
       createdAt: new Date().toISOString(),
     }
     data.destinations.push(dest)
-    await kv.set(`device:${deviceId}`, data)
+    await redis.set(`device:${deviceId}`, data)
   } catch (e: any) {
     errorMsg = e.message ?? "Could not save destination"
   }

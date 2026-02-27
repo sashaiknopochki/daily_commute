@@ -2,7 +2,7 @@
 
 import { cookies } from "next/headers"
 import { redirect } from "next/navigation"
-import { kv } from "@vercel/kv"
+import { redis } from "@/lib/redis"
 import { geocode, getNearbyStops } from "@/lib/bvg"
 import { DeviceData, RouteSummary } from "@/types"
 
@@ -11,7 +11,7 @@ async function getDeviceData() {
   const deviceId = cookieStore.get("device_id")?.value
   if (!deviceId) return { deviceId: null, data: null }
   try {
-    const data = await kv.get<DeviceData>(`device:${deviceId}`)
+    const data = await redis.get<DeviceData>(`device:${deviceId}`)
     return { deviceId, data }
   } catch {
     return { deviceId, data: null }
@@ -37,7 +37,7 @@ export async function updateDestination(formData: FormData) {
     try {
       const idx = data.destinations.findIndex((d) => d.id === id)
       data.destinations[idx] = { ...data.destinations[idx], name }
-      await kv.set(`device:${deviceId}`, data)
+      await redis.set(`device:${deviceId}`, data)
     } catch (e: any) {
       errorMsg = e.message ?? "Could not save"
     }
@@ -101,7 +101,7 @@ export async function selectRoute(formData: FormData) {
       preferredRouteToken: refreshToken || null,
       preferredRouteSummary: routeSummary,
     }
-    await kv.set(`device:${deviceId}`, data)
+    await redis.set(`device:${deviceId}`, data)
   } catch (e: any) {
     errorMsg = e.message ?? "Could not save"
   }
@@ -119,7 +119,7 @@ export async function deleteDestination(formData: FormData) {
   let errorMsg: string | null = null
   try {
     data.destinations = data.destinations.filter((d) => d.id !== id)
-    await kv.set(`device:${deviceId}`, data)
+    await redis.set(`device:${deviceId}`, data)
   } catch (e: any) {
     errorMsg = e.message ?? "Could not delete"
   }

@@ -1,4 +1,4 @@
-import { kv } from '@vercel/kv';
+import { redis } from '@/lib/redis';
 import { DeviceData } from '@/types';
 
 export const dynamic = 'force-dynamic';
@@ -12,7 +12,7 @@ export async function GET(request: Request) {
     }
 
     try {
-        const data = await kv.get<DeviceData>(`device:${deviceId}`);
+        const data = await redis.get<DeviceData>(`device:${deviceId}`);
         return Response.json(data || { deviceId, home: null, destinations: [], createdAt: new Date().toISOString() });
     } catch (error) {
         console.error('KV Error:', error);
@@ -40,7 +40,7 @@ export async function POST(request: Request) {
     };
 
     try {
-        await kv.set(`device:${deviceId}`, newData);
+        await redis.set(`device:${deviceId}`, newData);
         return Response.json(newData);
     } catch (error) {
         console.error('KV Error:', error);
