@@ -34,6 +34,9 @@ if(typeof queueMicrotask==="undefined"){window.queueMicrotask=function(fn){Promi
 if(typeof Promise!=="undefined"&&!Promise.allSettled){Promise.allSettled=function(ps){return Promise.all(ps.map(function(p){return Promise.resolve(p).then(function(v){return{status:"fulfilled",value:v};},function(r){return{status:"rejected",reason:r};});}));};}
 // structuredClone polyfill (iOS < 15.4)
 if(typeof structuredClone==="undefined"){window.structuredClone=function(obj){return JSON.parse(JSON.stringify(obj));};}
+// Array.prototype.at / String.prototype.at polyfill (iOS < 15.4) — used by Next.js router
+if(!Array.prototype.at){Array.prototype.at=function(i){var n=Math.trunc(i)||0;return n<0?this[this.length+n]:this[n];};}
+if(!String.prototype.at){String.prototype.at=function(i){var n=Math.trunc(i)||0;return n<0?this[this.length+n]:this[n];};}
             `.trim(),
           }}
         />
