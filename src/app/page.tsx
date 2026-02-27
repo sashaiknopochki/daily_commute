@@ -3,8 +3,7 @@
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import useSWR from "swr"
-import { Plus, RefreshCcw, AlertTriangle, CheckCircle2, MonitorOff, Monitor } from "lucide-react"
-import NoSleep from "nosleep.js"
+import { Plus, AlertTriangle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -24,27 +23,11 @@ const fetcher = async (url: string) => {
 export default function Dashboard() {
   const router = useRouter()
   const [deviceId, setDeviceId] = useState<string | null>(null)
-  const [offline, setOffline] = useState(false)
-  const [noSleep, setNoSleep] = useState<NoSleep | null>(null)
-  const [isAwake, setIsAwake] = useState(false)
+  const [localData, setLocalData] = useState<DeviceData | null>(null)
 
   useEffect(() => {
     setDeviceId(getDeviceId())
-    setNoSleep(new NoSleep())
   }, [])
-
-  const toggleNoSleep = () => {
-    if (!noSleep) return
-    if (isAwake) {
-      noSleep.disable()
-      setIsAwake(false)
-    } else {
-      noSleep.enable()
-      setIsAwake(true)
-    }
-  }
-
-  const [localData, setLocalData] = useState<DeviceData | null>(null)
 
   useEffect(() => {
     if (deviceId) {
@@ -52,7 +35,7 @@ export default function Dashboard() {
     }
   }, [deviceId])
 
-  const { data: apiData, mutate, isLoading } = useSWR<DeviceData>(
+  const { data: apiData, isLoading } = useSWR<DeviceData>(
     deviceId ? `/api/device?deviceId=${deviceId}` : null,
     fetcher,
     {
@@ -63,25 +46,18 @@ export default function Dashboard() {
       onSuccess: (data) => {
         if (data && !(data as any).error) {
           setLocalStorageData(`device:${deviceId}`, data)
-          setOffline(false)
         }
       },
-      onError: () => {
-        setOffline(true)
-      }
     }
   )
 
   const deviceData = apiData || localData
 
-  // Redirect if no home
   useEffect(() => {
     if (deviceData && !deviceData.home && !isLoading) {
       router.push("/setup")
     }
   }, [deviceData, isLoading, router])
-
-  // Polling fallback removed in favor of SWR internal refresh
 
   if (isLoading || !deviceData) {
     return (
@@ -95,25 +71,15 @@ export default function Dashboard() {
 
   return (
     <div className="flex flex-col min-h-screen max-w-3xl mx-auto p-4 md:p-8">
-      {/* Top Bar */}
-      <header className="flex items-center justify-between mb-8">
+      <header className="mb-8">
         <h1 className="text-sm font-medium text-muted-foreground uppercase tracking-widest">
           BVG Board
         </h1>
-        {offline && deviceData === localData && (
-          <Badge variant="outline" className="text-muted-foreground border-muted-foreground">
-            Offline Mode
-          </Badge>
-        )}
-        <Button variant="ghost" size="icon" onClick={() => mutate()} disabled={isLoading}>
-          <RefreshCcw className={`h-5 w-5 ${isLoading ? "animate-spin" : ""}`} />
-        </Button>
       </header>
 
-      {/* Destination List */}
       <main className="flex-1 space-y-6 flex-col-gap-6">
         {destinations.length === 0 ? (
-          <div className="text-center py-20 bg-slate-50 rounded-xl border-2 border-dashed">
+          <div className="text-center py-20 bg-zinc-900 rounded-xl border-2 border-dashed border-zinc-700">
             <h2 className="text-2xl font-semibold mb-2">No destinations yet</h2>
             <p className="text-muted-foreground mb-6">Add a place to track your commute status.</p>
             <Button onClick={() => router.push("/destination/new")} size="lg">
@@ -126,8 +92,7 @@ export default function Dashboard() {
               <DestinationCard
                 key={dest.id}
                 destination={dest}
-                deviceId={deviceId!}
-                homeStopId={deviceData.home?.stopId || ""}
+                homeStopId={deviceData.home ? deviceData.home.stopId : ""}
               />
             ))}
 
@@ -141,30 +106,15 @@ export default function Dashboard() {
           </div>
         )}
       </main>
-
-      {/* NoSleep control only */}
-      <footer className="mt-12 flex justify-end">
-        <Button
-          variant={isAwake ? "default" : "outline"}
-          size="sm"
-          onClick={toggleNoSleep}
-          className="flex-row-gap-2"
-        >
-          {isAwake ? <Monitor className="h-4 w-4" /> : <MonitorOff className="h-4 w-4" />}
-          {isAwake ? "Keep Screen Awake" : "Enable Screen Awake"}
-        </Button>
-      </footer>
     </div>
   )
 }
 
 function DestinationCard({
   destination,
-  deviceId,
   homeStopId
 }: {
   destination: Destination;
-  deviceId: string;
   homeStopId: string;
 }) {
   const router = useRouter()
@@ -192,8 +142,7 @@ function DestinationCard({
 
   return (
     <Card
-      className={`relative overflow-hidden cursor-pointer transition-colors ${disruption.isDisrupted ? "border-destructive bg-destructive/5" : ""
-        }`}
+      className={`relative overflow-hidden cursor-pointer transition-colors ${disruption.isDisrupted ? "border-destructive bg-destructive/5" : ""}`}
       onClick={() => router.push(`/destination/${destination.id}`)}
     >
       <CardHeader className="pb-3">
@@ -207,8 +156,7 @@ function DestinationCard({
             variant={statusColor === "default" ? "default" : statusColor}
             className="text-lg px-3 py-1"
           >
-            <span className={`w-2.5 h-2.5 rounded-full mr-2 ${disruption.isDisrupted ? "bg-white" : isUnknown ? "bg-slate-400" : "bg-white"
-              }`} />
+            <span className={`w-2.5 h-2.5 rounded-full mr-2 ${disruption.isDisrupted ? "bg-white" : isUnknown ? "bg-zinc-400" : "bg-white"}`} />
             {statusLabel}
           </Badge>
         </div>
@@ -218,8 +166,8 @@ function DestinationCard({
             <div className="flex items-center flex-wrap">
               {destination.preferredRouteSummary.legs.map((leg, i) => (
                 <span key={i} className="flex items-center">
-                  {i > 0 && <span className="mx-2 text-slate-300">→</span>}
-                  <span className="font-bold text-slate-800">{leg.line || leg.mode}</span>
+                  {i > 0 && <span className="mx-2 text-zinc-500">→</span>}
+                  <span className="font-bold text-zinc-100">{leg.line || leg.mode}</span>
                 </span>
               ))}
             </div>
@@ -239,16 +187,16 @@ function DestinationCard({
 
             <p className="text-muted-foreground font-medium mb-3">Alternative routes:</p>
             <div className="space-y-3">
-              {alternativesData?.journeys?.slice(0, 3).map((alt: any, i: number) => {
+              {alternativesData && alternativesData.journeys && alternativesData.journeys.slice(0, 3).map((alt: any, i: number) => {
                 const altSummary = extractRouteSummary(alt)
                 const altDisruption = detectDisruption(alt)
                 if (altDisruption.isDisrupted) return null
 
                 return (
-                  <div key={i} className="flex justify-between items-center text-slate-800 bg-white p-2 rounded border border-slate-200">
+                  <div key={i} className="flex justify-between items-center bg-zinc-800 p-2 rounded border border-zinc-700">
                     <div className="flex items-center flex-wrap gap-1">
                       {altSummary.legs.map((leg, li) => (
-                        <span key={li} className="font-bold text-sm bg-slate-100 px-1.5 py-0.5 rounded">
+                        <span key={li} className="font-bold text-sm bg-zinc-700 px-1.5 py-0.5 rounded text-zinc-100">
                           {leg.line || leg.mode}
                         </span>
                       ))}
@@ -256,7 +204,7 @@ function DestinationCard({
                   </div>
                 )
               })}
-              {(!alternativesData?.journeys || alternativesData.journeys.length === 0) && (
+              {(!alternativesData || !alternativesData.journeys || alternativesData.journeys.length === 0) && (
                 <p className="text-sm italic">Searching for alternatives...</p>
               )}
             </div>

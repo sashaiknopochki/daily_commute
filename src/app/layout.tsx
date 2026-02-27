@@ -21,7 +21,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" className="dark">
       <head>
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black" />
@@ -41,7 +41,7 @@ if(typeof structuredClone==="undefined"){window.structuredClone=function(obj){re
           }}
         />
       </head>
-      <body className={`${inter.className} antialiased min-h-screen bg-white text-black`}>
+      <body className={`${inter.className} antialiased min-h-screen bg-background text-foreground`}>
         {children}
       </body>
     </html>
