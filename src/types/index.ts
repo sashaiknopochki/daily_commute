@@ -33,10 +33,3 @@ export interface RouteLeg {
     line?: string
     direction?: string
 }
-
-export interface JourneyStatus {
-    isDisrupted: boolean
-    reason?: string
-    alternativeJourneys?: RouteSummary[]
-    status: 'good' | 'disrupted' | 'unknown'
-}

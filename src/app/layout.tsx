@@ -28,7 +28,16 @@ export default function RootLayout({
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
         <script
           dangerouslySetInnerHTML={{
-            __html: `if(typeof globalThis==="undefined"){var globalThis=window;}`,
+            __html: `
+// globalThis polyfill (iOS < 12.1)
+if(typeof globalThis==="undefined"){var globalThis=window;}
+// queueMicrotask polyfill (iOS < 14)
+if(typeof queueMicrotask==="undefined"){window.queueMicrotask=function(fn){Promise.resolve().then(fn);};}
+// Promise.allSettled polyfill (iOS < 13)
+if(typeof Promise!=="undefined"&&!Promise.allSettled){Promise.allSettled=function(ps){return Promise.all(ps.map(function(p){return Promise.resolve(p).then(function(v){return{status:"fulfilled",value:v};},function(r){return{status:"rejected",reason:r};});}));};}
+// structuredClone polyfill (iOS < 15.4)
+if(typeof structuredClone==="undefined"){window.structuredClone=function(obj){return JSON.parse(JSON.stringify(obj));};}
+            `.trim(),
           }}
         />
       </head>
