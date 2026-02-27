@@ -36,6 +36,7 @@ import { Destination } from "@/types"
 const editSchema = z.object({
     name: z.string().min(2, "Name is required"),
     address: z.string().min(5, "Address must be at least 5 characters"),
+    arrivalTime: z.string().optional(),
 })
 
 export default function EditDestinationPage({ params }: { params: Promise<{ id: string }> }) {
@@ -54,7 +55,7 @@ export default function EditDestinationPage({ params }: { params: Promise<{ id: 
 
     const form = useForm<z.infer<typeof editSchema>>({
         resolver: zodResolver(editSchema),
-        defaultValues: { name: "", address: "" },
+        defaultValues: { name: "", address: "", arrivalTime: "" },
     })
 
     useEffect(() => {
@@ -69,7 +70,7 @@ export default function EditDestinationPage({ params }: { params: Promise<{ id: 
 
                 setDestination(dest)
                 setHomeStop(data.home)
-                form.reset({ name: dest.name, address: dest.address })
+                form.reset({ name: dest.name, address: dest.address, arrivalTime: dest.arrivalTime || "" })
             } catch (err: any) {
                 setError(err.message)
             } finally {
@@ -106,7 +107,12 @@ export default function EditDestinationPage({ params }: { params: Promise<{ id: 
                 await fetch(`/api/destinations/${id}`, {
                     method: "PATCH",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ deviceId, updates: { name: values.name } })
+                    body: JSON.stringify({
+                        deviceId, updates: {
+                            name: values.name,
+                            arrivalTime: values.arrivalTime
+                        }
+                    })
                 })
                 router.push("/")
             }
@@ -135,6 +141,7 @@ export default function EditDestinationPage({ params }: { params: Promise<{ id: 
                         stopName: newTargetStop.name,
                         preferredRouteToken: journey.refreshToken,
                         preferredRouteSummary: summary,
+                        arrivalTime: form.getValues().arrivalTime,
                     }
                 })
             })
@@ -216,6 +223,19 @@ export default function EditDestinationPage({ params }: { params: Promise<{ id: 
                                                     <Input className="text-lg h-12" {...field} />
                                                 </FormControl>
                                                 <FormDescription>Changing address will reset your preferred route.</FormDescription>
+                                                <FormMessage />
+                                            </FormItem>
+                                        )}
+                                    />
+                                    <FormField
+                                        control={form.control}
+                                        name="arrivalTime"
+                                        render={({ field }) => (
+                                            <FormItem>
+                                                <FormLabel className="text-lg">Target Arrival Time (Optional)</FormLabel>
+                                                <FormControl>
+                                                    <Input type="time" className="text-lg h-12" {...field} />
+                                                </FormControl>
                                                 <FormMessage />
                                             </FormItem>
                                         )}

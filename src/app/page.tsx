@@ -94,6 +94,9 @@ export default function Dashboard() {
             Offline Mode
           </Badge>
         )}
+        <Button variant="ghost" size="icon" onClick={() => mutate()} disabled={isLoading}>
+          <RefreshCcw className={`h-5 w-5 ${isLoading ? "animate-spin" : ""}`} />
+        </Button>
       </header>
 
       {/* Destination List */}
@@ -162,7 +165,8 @@ function DestinationCard({
   const router = useRouter()
   const { data: journey, error } = useSWR(
     destination.preferredRouteToken ? `/api/journeys/refresh?token=${destination.preferredRouteToken}` : null,
-    fetcher
+    fetcher,
+    { refreshInterval: 600000 } // 10 minutes
   )
 
   const disruption = detectDisruption(journey)
@@ -184,12 +188,19 @@ function DestinationCard({
     >
       <CardHeader className="pb-3">
         <div className="flex justify-between items-start">
-          <CardTitle className="text-3xl font-bold truncate pr-4">
-            {destination.name}
-          </CardTitle>
+          <div className="pr-4">
+            <CardTitle className="text-3xl font-bold truncate">
+              {destination.name}
+            </CardTitle>
+            {destination.arrivalTime && (
+              <p className="text-sm font-medium text-muted-foreground mt-1">
+                Must arrive by {destination.arrivalTime}
+              </p>
+            )}
+          </div>
           <Badge
             variant={statusColor === "default" ? "default" : statusColor}
-            className={`text-lg px-3 py-1 ${statusColor === "default" ? "bg-green-600 hover:bg-green-700" : ""}`}
+            className="text-lg px-3 py-1"
           >
             <span className={`w-2.5 h-2.5 rounded-full mr-2 ${disruption.isDisrupted ? "bg-white" : isUnknown ? "bg-slate-400" : "bg-white"
               }`} />

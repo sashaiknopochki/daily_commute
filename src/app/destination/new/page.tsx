@@ -24,6 +24,7 @@ import { extractRouteSummary } from "@/lib/bvg"
 const step1Schema = z.object({
     name: z.string().min(2, "Name is required"),
     address: z.string().min(5, "Address must be at least 5 characters"),
+    arrivalTime: z.string().optional(),
 })
 
 export default function NewDestinationPage() {
@@ -38,7 +39,7 @@ export default function NewDestinationPage() {
 
     const form = useForm<z.infer<typeof step1Schema>>({
         resolver: zodResolver(step1Schema),
-        defaultValues: { name: "", address: "" },
+        defaultValues: { name: "", address: "", arrivalTime: "" },
     })
 
     // Step 1 -> Step 2
@@ -92,6 +93,7 @@ export default function NewDestinationPage() {
                     stopName: targetStop.name,
                     preferredRouteToken: journey.refreshToken,
                     preferredRouteSummary: routeSummary,
+                    arrivalTime: form.getValues().arrivalTime,
                 }
             }
 
@@ -145,6 +147,19 @@ export default function NewDestinationPage() {
                                                 <FormLabel className="text-lg">Address</FormLabel>
                                                 <FormControl>
                                                     <Input placeholder="e.g. Alexanderplatz, Berlin" className="text-lg h-12" {...field} />
+                                                </FormControl>
+                                                <FormMessage />
+                                            </FormItem>
+                                        )}
+                                    />
+                                    <FormField
+                                        control={form.control}
+                                        name="arrivalTime"
+                                        render={({ field }) => (
+                                            <FormItem>
+                                                <FormLabel className="text-lg">Target Arrival Time (Optional)</FormLabel>
+                                                <FormControl>
+                                                    <Input type="time" className="text-lg h-12" {...field} />
                                                 </FormControl>
                                                 <FormMessage />
                                             </FormItem>
