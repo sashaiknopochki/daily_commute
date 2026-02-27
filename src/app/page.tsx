@@ -12,7 +12,14 @@ import { getDeviceId, getLocalStorageData, setLocalStorageData } from "@/lib/sto
 import { DeviceData, Destination } from "@/types"
 import { detectDisruption, extractRouteSummary } from "@/lib/bvg"
 
-const fetcher = (url: string) => fetch(url).then((res) => res.json())
+const fetcher = async (url: string) => {
+  const res = await fetch(url)
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}))
+    throw new Error(errorData.error || 'Fetch failed')
+  }
+  return res.json()
+}
 
 export default function Dashboard() {
   const router = useRouter()
@@ -37,7 +44,15 @@ export default function Dashboard() {
     }
   }
 
-  const { data: deviceData, error, mutate, isLoading } = useSWR<DeviceData>(
+  const [localData, setLocalData] = useState<DeviceData | null>(null)
+
+  useEffect(() => {
+    if (deviceId) {
+      setLocalData(getLocalStorageData<DeviceData>(`device:${deviceId}`))
+    }
+  }, [deviceId])
+
+  const { data: apiData, mutate, isLoading } = useSWR<DeviceData>(
     deviceId ? `/api/device?deviceId=${deviceId}` : null,
     fetcher,
     {
@@ -49,13 +64,12 @@ export default function Dashboard() {
         }
       },
       onError: () => {
-        const local = getLocalStorageData<DeviceData>(`device:${deviceId}`)
-        if (local) {
-          setOffline(true)
-        }
+        setOffline(true)
       }
     }
   )
+
+  const deviceData = apiData || localData
 
   // Redirect if no home
   useEffect(() => {
