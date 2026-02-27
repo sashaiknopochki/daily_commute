@@ -42,31 +42,33 @@ export async function refreshJourney(refreshToken: string) {
 }
 
 export function extractRouteSummary(journey: any): RouteSummary {
-    const legs = journey.legs.map((leg: any) => ({
+    const legs = journey.legs?.map((leg: any) => ({
         mode: leg.mode,
         line: leg.line?.name,
         direction: leg.direction,
-    }));
-
-    const firstLeg = journey.legs[0];
-    const lastLeg = journey.legs[journey.legs.length - 1];
-
-    const depTime = firstLeg.prognosedDeparture || firstLeg.departure;
-    const arrTime = lastLeg.prognosedArrival || lastLeg.arrival;
+    })) || [];
 
     let duration = 0;
-    if (depTime && arrTime) {
-        const departure = new Date(depTime);
-        const arrival = new Date(arrTime);
-        duration = Math.round((arrival.getTime() - departure.getTime()) / 60000);
+    if (journey.legs && journey.legs.length > 0) {
+        const firstLeg = journey.legs[0];
+        const lastLeg = journey.legs[journey.legs.length - 1];
+
+        const depTime = firstLeg.prognosedDeparture || firstLeg.departure;
+        const arrTime = lastLeg.prognosedArrival || lastLeg.arrival;
+
+        if (depTime && arrTime) {
+            const departure = new Date(depTime);
+            const arrival = new Date(arrTime);
+            duration = Math.round((arrival.getTime() - departure.getTime()) / 60000);
+        }
     }
 
-    // Sanity check for duration
-    if (isNaN(duration) || duration < 0 || duration > 1440) {
+    // Sanity check for duration: must be between 1 and 480 minutes (8 hours)
+    if (isNaN(duration) || duration <= 0 || duration > 480) {
         duration = 0;
     }
 
-    const transfers = journey.legs.filter((leg: any) => leg.mode !== 'walking').length - 1;
+    const transfers = journey.legs ? journey.legs.filter((leg: any) => leg.mode !== 'walking').length - 1 : 0;
 
     return {
         legs,
@@ -80,7 +82,13 @@ export function detectDisruption(journey: any) {
 
     let disruptionReason: string | undefined;
 
-    // Check journey-level remarks first (common for strikes)
+    // 1. Check if the journey itself is marked as unreachable
+    // Often happens during strikes where no route is possible
+    if (journey.reachable === false) {
+        return { isDisrupted: true, reason: 'Trip not possible (Strike/Outage)' };
+    }
+
+    // 2. Check for critical remarks (common for strikes)
     const allRemarks = [
         ...(journey.remarks || []),
         ...journey.legs.flatMap((l: any) => l.remarks || [])
@@ -92,6 +100,7 @@ export function detectDisruption(journey: any) {
         r.text?.toLowerCase().includes('streik') ||
         r.text?.toLowerCase().includes('strike') ||
         r.text?.toLowerCase().includes('ausfall') ||
+        r.text?.toLowerCase().includes('geändert') ||
         r.text?.toLowerCase().includes('cancelled')
     );
 
@@ -99,14 +108,17 @@ export function detectDisruption(journey: any) {
         disruptionReason = criticalRemark.text;
     }
 
+    // 3. Check for cancelled legs
     const hasCancelled = journey.legs.some((leg: any) => leg.cancelled === true);
+
+    // 4. Check for unreachable legs
     const isUnreachable = journey.legs.some((leg: any) => leg.reachable === false);
 
     const isDisrupted = hasCancelled || !!criticalRemark || isUnreachable;
 
     if (isDisrupted && !disruptionReason) {
         if (hasCancelled) disruptionReason = 'Leg cancelled';
-        if (isUnreachable) disruptionReason = 'Leg unreachable';
+        if (isUnreachable) disruptionReason = 'Segment unreachable';
     }
 
     return {

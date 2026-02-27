@@ -99,7 +99,7 @@ export default function Dashboard() {
         <h1 className="text-sm font-medium text-muted-foreground uppercase tracking-widest">
           BVG Board
         </h1>
-        {offline && (
+        {offline && deviceData === localData && (
           <Badge variant="outline" className="text-muted-foreground border-muted-foreground">
             Offline Mode
           </Badge>
@@ -141,23 +141,17 @@ export default function Dashboard() {
         )}
       </main>
 
-      {/* Tip Banner for iPad */}
-      <footer className="mt-12 p-4 bg-muted border rounded-lg">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <div>
-            <p className="font-semibold text-sm">Tip for iPad users:</p>
-            <p className="text-xs text-muted-foreground">Go to Settings → Auto-Lock → Never to keep screen on.</p>
-          </div>
-          <Button
-            variant={isAwake ? "default" : "outline"}
-            size="sm"
-            onClick={toggleNoSleep}
-            className="flex-row-gap-2"
-          >
-            {isAwake ? <Monitor className="h-4 w-4" /> : <MonitorOff className="h-4 w-4" />}
-            {isAwake ? "Screen wake on" : "Keep screen on"}
-          </Button>
-        </div>
+      {/* NoSleep control only */}
+      <footer className="mt-12 flex justify-end">
+        <Button
+          variant={isAwake ? "default" : "outline"}
+          size="sm"
+          onClick={toggleNoSleep}
+          className="flex-row-gap-2"
+        >
+          {isAwake ? <Monitor className="h-4 w-4" /> : <MonitorOff className="h-4 w-4" />}
+          {isAwake ? "Keep Screen Awake" : "Enable Screen Awake"}
+        </Button>
       </footer>
     </div>
   )
