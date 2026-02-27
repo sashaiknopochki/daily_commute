@@ -26,17 +26,36 @@ export default function RootLayout({
         <script
           dangerouslySetInnerHTML={{
             __html: `
-// globalThis polyfill (iOS < 12.1)
+// --- Polyfills for iOS 12 (Safari 12) ---
+// globalThis (iOS < 12.1)
 if(typeof globalThis==="undefined"){var globalThis=window;}
-// queueMicrotask polyfill (iOS < 14)
+// queueMicrotask (iOS < 14)
 if(typeof queueMicrotask==="undefined"){window.queueMicrotask=function(fn){Promise.resolve().then(fn);};}
-// Promise.allSettled polyfill (iOS < 13)
+// Promise.allSettled (iOS < 13)
 if(typeof Promise!=="undefined"&&!Promise.allSettled){Promise.allSettled=function(ps){return Promise.all(ps.map(function(p){return Promise.resolve(p).then(function(v){return{status:"fulfilled",value:v};},function(r){return{status:"rejected",reason:r};});}));};}
-// structuredClone polyfill (iOS < 15.4)
+// structuredClone (iOS < 15.4)
 if(typeof structuredClone==="undefined"){window.structuredClone=function(obj){return JSON.parse(JSON.stringify(obj));};}
-// Array.prototype.at / String.prototype.at polyfill (iOS < 15.4) — used by Next.js router
+// Array/String.prototype.at (iOS < 15.4) — used by Next.js router
 if(!Array.prototype.at){Array.prototype.at=function(i){var n=Math.trunc(i)||0;return n<0?this[this.length+n]:this[n];};}
 if(!String.prototype.at){String.prototype.at=function(i){var n=Math.trunc(i)||0;return n<0?this[this.length+n]:this[n];};}
+// --- Device ID cookie bootstrap ---
+// If no device_id cookie yet, read from localStorage (migration) or generate
+// a new one, set the cookie, then reload so the server sees it.
+// Uses sessionStorage to prevent infinite reload loops.
+(function(){
+  if(/(?:^|;\s*)device_id=/.test(document.cookie))return;
+  if(sessionStorage.getItem('__bs')){window.location.href='/setup';return;}
+  sessionStorage.setItem('__bs','1');
+  var id=localStorage.getItem('bvg_board_device_id');
+  if(!id){
+    var a=new Uint8Array(16);crypto.getRandomValues(a);
+    a[6]=(a[6]&0x0f)|0x40;a[8]=(a[8]&0x3f)|0x80;
+    var h=Array.from(a,function(b){return('0'+b.toString(16)).slice(-2);}).join('');
+    id=h.slice(0,8)+'-'+h.slice(8,12)+'-'+h.slice(12,16)+'-'+h.slice(16,20)+'-'+h.slice(20);
+  }
+  document.cookie='device_id='+id+';path=/;max-age=31536000';
+  location.reload();
+})();
             `.trim(),
           }}
         />

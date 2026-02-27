@@ -1,24 +1,8 @@
-function generateUUID(): string {
-    const bytes = new Uint8Array(16);
-    crypto.getRandomValues(bytes);
-    bytes[6] = (bytes[6] & 0x0f) | 0x40; // version 4
-    bytes[8] = (bytes[8] & 0x3f) | 0x80; // RFC 4122 variant
-    const hex = Array.from(bytes, function(b) { return b.toString(16).padStart(2, '0'); }).join('');
-    return hex.slice(0, 8) + '-' + hex.slice(8, 12) + '-' + hex.slice(12, 16) + '-' + hex.slice(16, 20) + '-' + hex.slice(20);
-}
-
-const DEVICE_ID_KEY = 'bvg_board_device_id';
-
-export function getDeviceId(): string {
-    if (typeof window === 'undefined') return '';
-
-    let deviceId = localStorage.getItem(DEVICE_ID_KEY);
-    if (!deviceId) {
-        deviceId = generateUUID();
-        localStorage.setItem(DEVICE_ID_KEY, deviceId);
-    }
-    return deviceId;
-}
+// Device ID is now managed server-side via the 'device_id' cookie.
+// The cookie bootstrap script in layout.tsx migrates any existing
+// localStorage ID and sets the cookie on the first page load.
+//
+// These helpers remain as utilities if needed by API routes.
 
 export function getLocalStorageData<T>(key: string): T | null {
     if (typeof window === 'undefined') return null;
@@ -26,8 +10,7 @@ export function getLocalStorageData<T>(key: string): T | null {
     if (!data) return null;
     try {
         return JSON.parse(data) as T;
-    } catch (e) {
-        console.error('Error parsing local storage data', e);
+    } catch {
         return null;
     }
 }

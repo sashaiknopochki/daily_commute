@@ -1,338 +1,262 @@
-"use client"
+import { cookies } from "next/headers"
+import { redirect } from "next/navigation"
+import { kv } from "@vercel/kv"
+import { ArrowLeft } from "lucide-react"
+import { DeviceData } from "@/types"
+import { getJourneys, extractRouteSummary } from "@/lib/bvg"
+import { updateDestination, selectRoute, deleteDestination } from "./actions"
 
-import { useEffect, useState, use } from "react"
-import { useRouter } from "next/navigation"
-import { zodResolver } from "@hookform/resolvers/zod"
-import { useForm } from "react-hook-form"
-import * as z from "zod"
-import { ChevronRight, ArrowLeft, Trash2, Save, MoveRight } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import {
-    Form,
-    FormControl,
-    FormDescription,
-    FormField,
-    FormItem,
-    FormLabel,
-    FormMessage,
-} from "@/components/ui/form"
-import { Input } from "@/components/ui/input"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import {
-    AlertDialog,
-    AlertDialogAction,
-    AlertDialogCancel,
-    AlertDialogContent,
-    AlertDialogDescription,
-    AlertDialogFooter,
-    AlertDialogHeader,
-    AlertDialogTitle,
-    AlertDialogTrigger,
-} from "@/components/ui/alert-dialog"
-import { getDeviceId } from "@/lib/storage"
-import { extractRouteSummary } from "@/lib/bvg"
-import { Destination } from "@/types"
+export const dynamic = "force-dynamic"
 
-const editSchema = z.object({
-    name: z.string().min(2, "Name is required"),
-    address: z.string().min(5, "Address must be at least 5 characters"),
-})
+export default async function EditDestinationPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>
+  searchParams: Promise<{
+    view?: string
+    name?: string
+    address?: string
+    stopId?: string
+    stopName?: string
+    error?: string
+  }>
+}) {
+  const { id } = await params
+  const sp = await searchParams
 
-export default function EditDestinationPage({ params }: { params: Promise<{ id: string }> }) {
-    const router = useRouter()
-    const { id } = use(params)
+  const cookieStore = await cookies()
+  const deviceId = cookieStore.get("device_id")?.value
+  if (!deviceId) redirect("/")
 
-    const [loading, setLoading] = useState(true)
-    const [saving, setSaving] = useState(false)
-    const [error, setError] = useState<string | null>(null)
+  const deviceData = await kv.get<DeviceData>(`device:${deviceId}`)
+  if (!deviceData?.home) redirect("/setup")
 
-    const [destination, setDestination] = useState<Destination | null>(null)
-    const [journeys, setJourneys] = useState<any[]>([])
-    const [showJourneys, setShowJourneys] = useState(false)
-    const [homeStop, setHomeStop] = useState<any>(null)
-    const [newTargetStop, setNewTargetStop] = useState<any>(null)
+  const destination = deviceData.destinations.find((d) => d.id === id)
+  if (!destination) redirect("/")
 
-    const form = useForm<z.infer<typeof editSchema>>({
-        resolver: zodResolver(editSchema),
-        defaultValues: { name: "", address: "" },
-    })
+  // ── Delete confirmation view ─────────────────────────────────────────
+  if (sp.view === "confirm-delete") {
+    return (
+      <div className="min-h-screen p-4 md:p-8">
+        <div className="max-w-2xl mx-auto">
+          <a
+            href={`/destination/${id}`}
+            className="inline-flex items-center gap-2 mb-6 text-zinc-400 hover:text-zinc-100 no-underline"
+          >
+            <ArrowLeft className="h-4 w-4" /> Back
+          </a>
 
-    useEffect(() => {
-        async function init() {
-            const deviceId = getDeviceId()
-            try {
-                let data;
-                try {
-                    const res = await fetch(`/api/device?deviceId=${deviceId}`)
-                    data = await res.json()
-                    if (data.error) throw new Error("API error")
-                } catch (err) {
-                    data = JSON.parse(localStorage.getItem(`device:${deviceId}`) || 'null')
-                }
+          <div className="rounded-xl border border-red-800/60 bg-zinc-900 p-8 text-center space-y-6">
+            <h2 className="text-2xl font-bold text-zinc-100">Remove "{destination.name}"?</h2>
+            <p className="text-zinc-400">This will remove it from your board.</p>
 
-                if (!data) throw new Error("Device data not found")
+            <div className="flex gap-4 justify-center">
+              <form action={deleteDestination}>
+                <input type="hidden" name="id" value={id} />
+                <button
+                  type="submit"
+                  className="px-8 py-3 rounded-lg bg-red-600 text-white font-semibold hover:bg-red-700"
+                >
+                  Yes, delete
+                </button>
+              </form>
+              <a
+                href={`/destination/${id}`}
+                className="px-8 py-3 rounded-lg border border-zinc-700 text-zinc-300 font-semibold hover:border-zinc-500 hover:text-zinc-100 no-underline"
+              >
+                Cancel
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
-                const dest = data.destinations.find((d: any) => d.id === id)
-                if (!dest) throw new Error("Destination not found")
+  // ── Route picker view ─────────────────────────────────────────────────
+  if (sp.view === "routes") {
+    const stopId = sp.stopId ?? destination.stopId
+    const stopName = sp.stopName ?? destination.stopName
+    const name = sp.name ?? destination.name
+    const address = sp.address ?? destination.address
 
-                setDestination(dest)
-                setHomeStop(data.home)
-                form.reset({ name: dest.name, address: dest.address })
-            } catch (err: any) {
-                setError(err.message)
-            } finally {
-                setLoading(false)
-            }
-        }
-        init()
-    }, [id, form])
-
-    async function onSaveDetails(values: z.infer<typeof editSchema>) {
-        setSaving(true)
-        setError(null)
-        try {
-            const deviceId = getDeviceId()
-
-            // If address changed, we need new routes
-            if (values.address !== destination?.address) {
-                // Geocode
-                const geoRes = await fetch(`/api/geocode?q=${encodeURIComponent(values.address)}`)
-                const geoData = await geoRes.json()
-
-                // Stops
-                const stopRes = await fetch(`/api/stops/nearby?lat=${geoData.lat}&lon=${geoData.lon}`)
-                const stops = await stopRes.json()
-                setNewTargetStop(stops[0])
-
-                // Journeys
-                const journeyRes = await fetch(`/api/journeys?from=${homeStop.stopId}&to=${stops[0].id}`)
-                const journeyData = await journeyRes.json()
-                setJourneys(journeyData.journeys || [])
-                setShowJourneys(true)
-            } else {
-                // Just update name
-                try {
-                    const res = await fetch(`/api/destinations/${id}`, {
-                        method: "PATCH",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                            deviceId, updates: {
-                                name: values.name,
-                            }
-                        })
-                    })
-                    if (!res.ok) throw new Error("API Patch failed")
-                } catch (err) {
-                    console.warn("API Patch failed, falling back to local storage")
-                    const existingData = JSON.parse(localStorage.getItem(`device:${deviceId}`) || '{}')
-                    const idx = existingData.destinations?.findIndex((d: any) => d.id === id)
-                    if (idx !== -1) {
-                        existingData.destinations[idx] = {
-                            ...existingData.destinations[idx],
-                            name: values.name,
-                        }
-                        localStorage.setItem(`device:${deviceId}`, JSON.stringify(existingData))
-                    }
-                }
-                router.push("/")
-            }
-        } catch (err: any) {
-            setError(err.message)
-        } finally {
-            setSaving(false)
-        }
+    let journeys: any[] = []
+    let fetchError: string | null = null
+    try {
+      const data = await getJourneys(deviceData.home.stopId, stopId)
+      journeys = data.journeys || []
+    } catch {
+      fetchError = "Could not fetch routes"
     }
-
-    async function handleSelectNewRoute(journey: any) {
-        setSaving(true)
-        try {
-            const deviceId = getDeviceId()
-            const summary = extractRouteSummary(journey)
-
-            try {
-                const res = await fetch(`/api/destinations/${id}`, {
-                    method: "PATCH",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        deviceId,
-                        updates: {
-                            name: form.getValues().name,
-                            address: form.getValues().address,
-                            stopId: newTargetStop.id,
-                            stopName: newTargetStop.name,
-                            preferredRouteToken: journey.refreshToken,
-                            preferredRouteSummary: summary,
-                        }
-                    })
-                })
-                if (!res.ok) throw new Error("API Path failed")
-            } catch (err) {
-                console.warn("API Patch failed, falling back to local storage")
-                const existingData = JSON.parse(localStorage.getItem(`device:${deviceId}`) || '{}')
-                const idx = existingData.destinations?.findIndex((d: any) => d.id === id)
-                if (idx !== -1) {
-                    existingData.destinations[idx] = {
-                        ...existingData.destinations[idx],
-                        name: form.getValues().name,
-                        address: form.getValues().address,
-                        stopId: newTargetStop.id,
-                        stopName: newTargetStop.name,
-                        preferredRouteToken: journey.refreshToken,
-                        preferredRouteSummary: summary,
-                    }
-                    localStorage.setItem(`device:${deviceId}`, JSON.stringify(existingData))
-                }
-            }
-            router.push("/")
-        } catch (err: any) {
-            setError(err.message)
-            setSaving(false)
-        }
-    }
-
-    async function handleDelete() {
-        const deviceId = getDeviceId()
-        try {
-            const res = await fetch(`/api/destinations/${id}?deviceId=${deviceId}`, { method: "DELETE" })
-            if (!res.ok) throw new Error("API delete failed")
-        } catch (err) {
-            // KV may be unavailable — remove from localStorage directly
-            const existingData = JSON.parse(localStorage.getItem(`device:${deviceId}`) || '{}')
-            if (existingData.destinations) {
-                existingData.destinations = existingData.destinations.filter((d: any) => d.id !== id)
-                localStorage.setItem(`device:${deviceId}`, JSON.stringify(existingData))
-            }
-        }
-        router.push("/")
-    }
-
-    if (loading) return <div className="p-8 text-center">Loading...</div>
 
     return (
-        <div className="min-h-screen p-4 md:p-8">
-            <div className="max-w-2xl mx-auto">
-                <Button variant="ghost" onClick={() => router.push("/")} className="mb-6">
-                    <ArrowLeft className="mr-2 h-4 w-4" /> Back to dashboard
-                </Button>
+      <div className="min-h-screen p-4 md:p-8">
+        <div className="max-w-2xl mx-auto">
+          <a
+            href={`/destination/${id}`}
+            className="inline-flex items-center gap-2 mb-6 text-zinc-400 hover:text-zinc-100 no-underline"
+          >
+            <ArrowLeft className="h-4 w-4" /> Back to edit
+          </a>
 
-                {!showJourneys ? (
-                    <Card>
-                        <CardHeader className="flex flex-row items-center justify-between">
-                            <CardTitle className="text-3xl font-bold">Edit Destination</CardTitle>
-                            <AlertDialog>
-                                <AlertDialogTrigger asChild>
-                                    <Button variant="ghost" size="icon" className="text-destructive">
-                                        <Trash2 className="h-6 w-6" />
-                                    </Button>
-                                </AlertDialogTrigger>
-                                <AlertDialogContent>
-                                    <AlertDialogHeader>
-                                        <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-                                        <AlertDialogDescription>
-                                            This will remove "{destination?.name}" from your board.
-                                        </AlertDialogDescription>
-                                    </AlertDialogHeader>
-                                    <AlertDialogFooter>
-                                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                        <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground">
-                                            Delete
-                                        </AlertDialogAction>
-                                    </AlertDialogFooter>
-                                </AlertDialogContent>
-                            </AlertDialog>
-                        </CardHeader>
-                        <CardContent>
-                            <Form {...form}>
-                                <form onSubmit={form.handleSubmit(onSaveDetails)} className="space-y-6">
-                                    <FormField
-                                        control={form.control}
-                                        name="name"
-                                        render={({ field }) => (
-                                            <FormItem>
-                                                <FormLabel className="text-lg">Name</FormLabel>
-                                                <FormControl>
-                                                    <Input className="text-lg h-12" {...field} />
-                                                </FormControl>
-                                                <FormMessage />
-                                            </FormItem>
-                                        )}
-                                    />
-                                    <FormField
-                                        control={form.control}
-                                        name="address"
-                                        render={({ field }) => (
-                                            <FormItem>
-                                                <FormLabel className="text-lg">Address</FormLabel>
-                                                <FormControl>
-                                                    <Input className="text-lg h-12" {...field} />
-                                                </FormControl>
-                                                <FormDescription>Changing address will reset your preferred route.</FormDescription>
-                                                <FormMessage />
-                                            </FormItem>
-                                        )}
-                                    />
-                                    {/* Arrival time removed */}
-                                    {error && <p className="text-destructive font-medium">{error}</p>}
-                                    <Button type="submit" className="w-full h-14 text-xl" disabled={saving}>
-                                        {saving ? "Saving..." : "Save Details"} <Save className="ml-2 h-5 w-5" />
-                                    </Button>
-                                </form>
-                            </Form>
+          <h2 className="text-3xl font-bold text-zinc-100 mb-2">Updated route options</h2>
+          <p className="text-zinc-400 mb-6">
+            From <strong className="text-zinc-100">{deviceData.home.stopName}</strong> to{" "}
+            <strong className="text-zinc-100">{stopName}</strong>
+          </p>
 
-                            <Button
-                                variant="outline"
-                                className="w-full h-12 mt-4"
-                                onClick={async () => {
-                                    setSaving(true)
-                                    try {
-                                        const journeyRes = await fetch(`/api/journeys?from=${homeStop.stopId}&to=${destination?.stopId}`)
-                                        const journeyData = await journeyRes.json()
-                                        setJourneys(journeyData.journeys || [])
-                                        setNewTargetStop({ id: destination?.stopId, name: destination?.stopName })
-                                        setShowJourneys(true)
-                                    } catch (e) {
-                                        setError("Failed to fetch routes")
-                                    } finally {
-                                        setSaving(false)
-                                    }
-                                }}
-                            >
-                                Change preferred route
-                            </Button>
-                        </CardContent>
-                    </Card>
-                ) : (
-                    <div className="space-y-6">
-                        <h2 className="text-3xl font-bold">Updated route options</h2>
-                        <div className="space-y-4">
-                            {journeys.map((journey, idx) => {
-                                const summary = extractRouteSummary(journey)
-                                return (
-                                    <Card key={idx} className="cursor-pointer" onClick={() => handleSelectNewRoute(journey)}>
-                                        <CardContent className="p-6">
-                                            <div className="flex justify-between items-center mb-4">
-                                                <div className="flex items-center flex-wrap gap-2">
-                                                    {summary.legs.map((leg, li) => (
-                                                        <div key={li} className="flex items-center">
-                                                            {li > 0 && <MoveRight className="mx-2 h-4 w-4" />}
-                                                            <div className="bg-slate-900 text-white rounded px-2 py-1 text-sm font-bold">
-                                                                {leg.line || leg.mode}
-                                                            </div>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        </CardContent>
-                                    </Card>
-                                )
-                            })}
-                        </div>
-                        <Button variant="ghost" onClick={() => setShowJourneys(false)} className="w-full">
-                            Cancel route selection
-                        </Button>
-                    </div>
-                )}
+          {fetchError && (
+            <div className="p-4 rounded-lg bg-red-950/50 border border-red-800/50 text-red-400 mb-4">
+              {fetchError}
             </div>
+          )}
+
+          <div className="space-y-4">
+            {journeys.map((journey, idx) => {
+              const summary = extractRouteSummary(journey)
+              return (
+                <form key={idx} action={selectRoute}>
+                  <input type="hidden" name="id" value={id} />
+                  <input type="hidden" name="name" value={name} />
+                  <input type="hidden" name="address" value={address} />
+                  <input type="hidden" name="stopId" value={stopId} />
+                  <input type="hidden" name="stopName" value={stopName} />
+                  <input type="hidden" name="refreshToken" value={journey.refreshToken ?? ""} />
+                  <input type="hidden" name="routeSummary" value={JSON.stringify(summary)} />
+                  <button
+                    type="submit"
+                    className="w-full text-left rounded-xl border border-zinc-700 bg-zinc-900 p-6 hover:border-zinc-500 cursor-pointer"
+                  >
+                    <div className="flex items-center flex-wrap gap-2">
+                      {summary.legs.map((leg, li) => (
+                        <span key={li} className="flex items-center">
+                          {li > 0 && <span className="mx-2 text-zinc-500">→</span>}
+                          <span className="bg-zinc-800 text-zinc-100 rounded px-2 py-1 text-sm font-bold border border-zinc-700">
+                            {leg.line || leg.mode}
+                          </span>
+                        </span>
+                      ))}
+                    </div>
+                  </button>
+                </form>
+              )
+            })}
+
+            {!fetchError && journeys.length === 0 && (
+              <div className="text-center py-10 bg-zinc-900 rounded-xl border border-zinc-700 text-zinc-400">
+                No routes found.
+              </div>
+            )}
+          </div>
+
+          <a
+            href={`/destination/${id}`}
+            className="mt-6 flex items-center justify-center w-full h-12 rounded-lg border border-zinc-700 text-zinc-400 hover:text-zinc-100 no-underline"
+          >
+            Cancel
+          </a>
         </div>
+      </div>
     )
+  }
+
+  // ── Edit form (default view) ──────────────────────────────────────────
+  const { error } = sp
+
+  // Build the "change route" URL (keeps current stop, just re-picks route)
+  const changeRouteUrl =
+    `/destination/${id}?view=routes` +
+    "&stopId=" + encodeURIComponent(destination.stopId) +
+    "&stopName=" + encodeURIComponent(destination.stopName)
+
+  return (
+    <div className="min-h-screen p-4 md:p-8">
+      <div className="max-w-2xl mx-auto">
+        <a
+          href="/"
+          className="inline-flex items-center gap-2 mb-6 text-zinc-400 hover:text-zinc-100 no-underline"
+        >
+          <ArrowLeft className="h-4 w-4" /> Back to dashboard
+        </a>
+
+        <div className="rounded-xl border border-zinc-800 bg-zinc-900 overflow-hidden">
+          <div className="flex items-center justify-between p-8 pb-6">
+            <h1 className="text-3xl font-bold text-zinc-100">Edit Destination</h1>
+
+            {/* Delete — navigates to a confirmation page (no JS needed) */}
+            <a
+              href={`/destination/${id}?view=confirm-delete`}
+              className="p-2 rounded-lg text-red-500 hover:bg-red-950/40 no-underline"
+              title="Delete destination"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="3 6 5 6 21 6" />
+                <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                <path d="M10 11v6M14 11v6" />
+                <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+              </svg>
+            </a>
+          </div>
+
+          <div className="px-8 pb-8 space-y-6">
+            <form action={updateDestination} className="space-y-6">
+              <input type="hidden" name="id" value={id} />
+
+              <div className="space-y-2">
+                <label htmlFor="name" className="block text-lg font-medium text-zinc-100">
+                  Name
+                </label>
+                <input
+                  id="name"
+                  name="name"
+                  type="text"
+                  required
+                  minLength={2}
+                  defaultValue={destination.name}
+                  className="w-full h-12 px-4 text-lg rounded-lg border border-zinc-700 bg-zinc-800 text-zinc-100 focus:outline-none focus:border-zinc-500"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label htmlFor="address" className="block text-lg font-medium text-zinc-100">
+                  Address
+                </label>
+                <input
+                  id="address"
+                  name="address"
+                  type="text"
+                  required
+                  minLength={5}
+                  defaultValue={destination.address}
+                  className="w-full h-12 px-4 text-lg rounded-lg border border-zinc-700 bg-zinc-800 text-zinc-100 focus:outline-none focus:border-zinc-500"
+                />
+                <p className="text-sm text-zinc-500">Changing address will reset your preferred route.</p>
+              </div>
+
+              {error && (
+                <div className="p-3 rounded-lg bg-red-950/50 border border-red-800/50 text-red-400 text-sm font-medium">
+                  {decodeURIComponent(error)}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                className="w-full h-14 text-xl font-semibold rounded-lg bg-zinc-100 text-zinc-900 hover:bg-zinc-200"
+              >
+                Save Details
+              </button>
+            </form>
+
+            <a
+              href={changeRouteUrl}
+              className="flex items-center justify-center w-full h-12 rounded-lg border border-zinc-700 text-zinc-400 hover:border-zinc-500 hover:text-zinc-100 no-underline"
+            >
+              Change preferred route
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
 }

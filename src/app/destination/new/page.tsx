@@ -1,243 +1,187 @@
-"use client"
-
-import { useState } from "react"
-import { useRouter } from "next/navigation"
-import { zodResolver } from "@hookform/resolvers/zod"
-import { useForm } from "react-hook-form"
-import * as z from "zod"
-import { ChevronRight, Check, ArrowLeft, Bus, Train, MoveRight } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import {
-    Form,
-    FormControl,
-    FormField,
-    FormItem,
-    FormLabel,
-    FormMessage,
-} from "@/components/ui/form"
-import { Input } from "@/components/ui/input"
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { getDeviceId, getLocalStorageData } from "@/lib/storage"
+import { cookies } from "next/headers"
+import { redirect } from "next/navigation"
+import { kv } from "@vercel/kv"
+import { ArrowLeft } from "lucide-react"
 import { DeviceData } from "@/types"
-import { extractRouteSummary } from "@/lib/bvg"
+import { getJourneys, extractRouteSummary } from "@/lib/bvg"
+import { findRoutes, saveDestination } from "./actions"
 
-const step1Schema = z.object({
-    name: z.string().min(2, "Name is required"),
-    address: z.string().min(5, "Address must be at least 5 characters"),
-})
+export const dynamic = "force-dynamic"
 
-export default function NewDestinationPage() {
-    const router = useRouter()
-    const [step, setStep] = useState(1)
-    const [loading, setLoading] = useState(false)
-    const [error, setError] = useState<string | null>(null)
+export default async function NewDestinationPage({
+  searchParams,
+}: {
+  searchParams: Promise<{
+    step?: string
+    name?: string
+    address?: string
+    stopId?: string
+    stopName?: string
+    error?: string
+  }>
+}) {
+  const params = await searchParams
+  const step = params.step === "2" ? 2 : 1
 
-    const [homeStop, setHomeStop] = useState<any>(null)
-    const [targetStop, setTargetStop] = useState<any>(null)
-    const [journeys, setJourneys] = useState<any[]>([])
+  // ── Step 2: pick a route ────────────────────────────────────────────────
+  if (step === 2) {
+    const { name = "", address = "", stopId = "", stopName = "" } = params
 
-    const form = useForm<z.infer<typeof step1Schema>>({
-        resolver: zodResolver(step1Schema),
-        defaultValues: { name: "", address: "" },
-    })
+    const cookieStore = await cookies()
+    const deviceId = cookieStore.get("device_id")?.value
+    if (!deviceId) redirect("/")
 
-    // Step 1 -> Step 2
-    async function onStep1Submit(values: z.infer<typeof step1Schema>) {
-        setLoading(true)
-        setError(null)
-        try {
-            // Get home stop
-            const deviceId = getDeviceId()
-            let deviceData;
-            try {
-                const deviceRes = await fetch(`/api/device?deviceId=${deviceId}`)
-                deviceData = await deviceRes.json()
-                if (deviceData.error) throw new Error("API error")
-            } catch (err) {
-                deviceData = JSON.parse(localStorage.getItem(`device:${deviceId}`) || '{}')
-            }
+    const deviceData = await kv.get<DeviceData>(`device:${deviceId}`)
+    if (!deviceData?.home) redirect("/setup")
 
-            if (!deviceData?.home) throw new Error("Home address not set")
-            setHomeStop(deviceData.home)
-
-            // Geocode destination
-            const geoRes = await fetch(`/api/geocode?q=${encodeURIComponent(values.address)}`)
-            if (!geoRes.ok) throw new Error("Destination address not found")
-            const geoData = await geoRes.json()
-
-            // Find nearby stop
-            const stopRes = await fetch(`/api/stops/nearby?lat=${geoData.lat}&lon=${geoData.lon}`)
-            if (!stopRes.ok) throw new Error("Could not find any BVG stops nearby")
-            const stops = await stopRes.json()
-            if (!Array.isArray(stops) || stops.length === 0) throw new Error("No BVG stops found near destination")
-            setTargetStop(stops[0])
-
-            // Get journeys
-            const journeyRes = await fetch(`/api/journeys?from=${deviceData.home.stopId}&to=${stops[0].id}`)
-            const journeyData = await journeyRes.json()
-            setJourneys(journeyData.journeys || [])
-
-            setStep(2)
-        } catch (err: any) {
-            setError(err.message)
-        } finally {
-            setLoading(false)
-        }
-    }
-
-    async function handleSelectRoute(journey: any) {
-        setLoading(true)
-        try {
-            const deviceId = getDeviceId()
-            const routeSummary = extractRouteSummary(journey)
-
-            const payload = {
-                deviceId,
-                destination: {
-                    name: form.getValues().name,
-                    address: form.getValues().address,
-                    stopId: targetStop.id,
-                    stopName: targetStop.name,
-                    preferredRouteToken: journey.refreshToken,
-                    preferredRouteSummary: routeSummary,
-                }
-            }
-
-            try {
-                const res = await fetch("/api/destinations", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(payload)
-                })
-
-                if (!res.ok) throw new Error("API save failed")
-            } catch (err) {
-                console.warn("Storage unreachable, falling back to local storage")
-                const existingDataString = localStorage.getItem(`device:${deviceId}`)
-                const existingData: DeviceData = existingDataString
-                    ? JSON.parse(existingDataString)
-                    : { deviceId, home: homeStop, destinations: [], createdAt: new Date().toISOString() }
-
-                const newDest = {
-                    ...payload.destination,
-                    id: Math.random().toString(36).substring(2, 9),
-                    createdAt: new Date().toISOString()
-                }
-
-                existingData.destinations.push(newDest as any)
-                localStorage.setItem(`device:${deviceId}`, JSON.stringify(existingData))
-            }
-
-            router.push("/")
-        } catch (err: any) {
-            setError(err.message)
-            setLoading(false)
-        }
+    let journeys: any[] = []
+    let fetchError: string | null = null
+    try {
+      const data = await getJourneys(deviceData.home.stopId, stopId)
+      journeys = data.journeys || []
+    } catch {
+      fetchError = "Could not fetch routes — check your connection"
     }
 
     return (
-        <div className="min-h-screen p-4 md:p-8">
-            <div className="max-w-2xl mx-auto">
-                <Button variant="ghost" onClick={() => step === 1 ? router.back() : setStep(1)} className="mb-6">
-                    <ArrowLeft className="mr-2 h-4 w-4" /> {step === 1 ? "Back" : "Back to details"}
-                </Button>
+      <div className="min-h-screen p-4 md:p-8">
+        <div className="max-w-2xl mx-auto">
+          <a
+            href="/destination/new"
+            className="inline-flex items-center gap-2 mb-6 text-zinc-400 hover:text-zinc-100 no-underline"
+          >
+            <ArrowLeft className="h-4 w-4" /> Back to details
+          </a>
 
-                {step === 1 ? (
-                    <Card>
-                        <CardHeader>
-                            <CardTitle className="text-3xl font-bold">Where are you going?</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <Form {...form}>
-                                <form onSubmit={form.handleSubmit(onStep1Submit)} className="space-y-6">
-                                    <FormField
-                                        control={form.control}
-                                        name="name"
-                                        render={({ field }) => (
-                                            <FormItem>
-                                                <FormLabel className="text-lg">Destination Name</FormLabel>
-                                                <FormControl>
-                                                    <Input placeholder="e.g. Office, Gym, Partner" className="text-lg h-12" {...field} />
-                                                </FormControl>
-                                                <FormMessage />
-                                            </FormItem>
-                                        )}
-                                    />
-                                    <FormField
-                                        control={form.control}
-                                        name="address"
-                                        render={({ field }) => (
-                                            <FormItem>
-                                                <FormLabel className="text-lg">Address</FormLabel>
-                                                <FormControl>
-                                                    <Input placeholder="e.g. Alexanderplatz, Berlin" className="text-lg h-12" {...field} />
-                                                </FormControl>
-                                                <FormMessage />
-                                            </FormItem>
-                                        )}
-                                    />
-                                    {/* Arrival time removed */}
-                                    {error && <p className="text-destructive font-medium">{error}</p>}
-                                    <Button type="submit" className="w-full h-14 text-xl" disabled={loading}>
-                                        {loading ? "Finding routes..." : "Find Routes"} <ChevronRight className="ml-2 h-5 w-5" />
-                                    </Button>
-                                </form>
-                            </Form>
-                        </CardContent>
-                    </Card>
-                ) : (
-                    <div className="space-y-6">
-                        <h2 className="text-3xl font-bold">Choose your preferred route</h2>
-                        <p className="text-muted-foreground">
-                            From <span className="font-bold text-foreground">{homeStop ? homeStop.stopName : ""}</span> to <span className="font-bold text-foreground">{targetStop ? targetStop.name : ""}</span>
-                        </p>
+          <h2 className="text-3xl font-bold text-zinc-100 mb-2">Choose your preferred route</h2>
+          <p className="text-zinc-400 mb-6">
+            From <strong className="text-zinc-100">{deviceData.home.stopName}</strong> to{" "}
+            <strong className="text-zinc-100">{stopName}</strong>
+          </p>
 
-                        <div className="space-y-4">
-                            {journeys.map((journey, idx) => {
-                                const summary = extractRouteSummary(journey)
-                                const firstDeparture = new Date(journey.legs[0].departure)
-
-                                return (
-                                    <Card
-                                        key={idx}
-                                        className="cursor-pointer hover:border-black transition-colors"
-                                        onClick={() => handleSelectRoute(journey)}
-                                    >
-                                        <CardContent className="p-6">
-                                            <div className="flex justify-between items-center mb-4">
-                                                <div className="flex items-center flex-wrap gap-2">
-                                                    {summary.legs.map((leg, li) => (
-                                                        <div key={li} className="flex items-center">
-                                                            {li > 0 && <MoveRight className="mx-2 h-4 w-4 text-slate-300" />}
-                                                            <div className="bg-slate-900 text-white rounded px-2 py-1 text-sm font-bold">
-                                                                {leg.line || leg.mode}
-                                                            </div>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            </div>
-
-                                            <div className="flex justify-between items-end text-muted-foreground font-medium">
-                                                <div className="text-lg">
-                                                    Next: <span className="text-foreground font-bold">
-                                                        {firstDeparture.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                                    </span>
-                                                </div>
-                                            </div>
-                                        </CardContent>
-                                    </Card>
-                                )
-                            })}
-
-                            {journeys.length === 0 && (
-                                <div className="text-center py-10 bg-zinc-900 rounded-lg border border-zinc-700">
-                                    No routes found for this journey.
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                )}
+          {fetchError && (
+            <div className="p-4 rounded-lg bg-red-950/50 border border-red-800/50 text-red-400 mb-4">
+              {fetchError}
             </div>
+          )}
+
+          <div className="space-y-4">
+            {journeys.map((journey, idx) => {
+              const summary = extractRouteSummary(journey)
+              const firstDep = journey.legs?.[0]?.departure
+                ? new Date(journey.legs[0].departure).toLocaleTimeString([], {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })
+                : null
+
+              return (
+                <form key={idx} action={saveDestination}>
+                  <input type="hidden" name="name" value={name} />
+                  <input type="hidden" name="address" value={address} />
+                  <input type="hidden" name="stopId" value={stopId} />
+                  <input type="hidden" name="stopName" value={stopName} />
+                  <input type="hidden" name="refreshToken" value={journey.refreshToken ?? ""} />
+                  <input type="hidden" name="routeSummary" value={JSON.stringify(summary)} />
+                  <button
+                    type="submit"
+                    className="w-full text-left rounded-xl border border-zinc-700 bg-zinc-900 p-6 hover:border-zinc-500 cursor-pointer"
+                  >
+                    <div className="flex items-center flex-wrap gap-2 mb-3">
+                      {summary.legs.map((leg, li) => (
+                        <span key={li} className="flex items-center">
+                          {li > 0 && <span className="mx-2 text-zinc-500">→</span>}
+                          <span className="bg-zinc-800 text-zinc-100 rounded px-2 py-1 text-sm font-bold border border-zinc-700">
+                            {leg.line || leg.mode}
+                          </span>
+                        </span>
+                      ))}
+                    </div>
+                    {firstDep && (
+                      <p className="text-zinc-400 text-base">
+                        Next: <strong className="text-zinc-100">{firstDep}</strong>
+                      </p>
+                    )}
+                  </button>
+                </form>
+              )
+            })}
+
+            {!fetchError && journeys.length === 0 && (
+              <div className="text-center py-10 bg-zinc-900 rounded-xl border border-zinc-700 text-zinc-400">
+                No routes found for this journey.
+              </div>
+            )}
+          </div>
         </div>
+      </div>
     )
+  }
+
+  // ── Step 1: name + address ──────────────────────────────────────────────
+  const { error, name = "", address = "" } = params
+
+  return (
+    <div className="min-h-screen p-4 md:p-8">
+      <div className="max-w-2xl mx-auto">
+        <a
+          href="/"
+          className="inline-flex items-center gap-2 mb-6 text-zinc-400 hover:text-zinc-100 no-underline"
+        >
+          <ArrowLeft className="h-4 w-4" /> Back
+        </a>
+
+        <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-8">
+          <h1 className="text-3xl font-bold text-zinc-100 mb-8">Where are you going?</h1>
+
+          <form action={findRoutes} className="space-y-6">
+            <div className="space-y-2">
+              <label htmlFor="name" className="block text-lg font-medium text-zinc-100">
+                Destination Name
+              </label>
+              <input
+                id="name"
+                name="name"
+                type="text"
+                required
+                minLength={2}
+                defaultValue={name}
+                placeholder="e.g. Office, Gym, Partner"
+                className="w-full h-12 px-4 text-lg rounded-lg border border-zinc-700 bg-zinc-800 text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-500"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label htmlFor="address" className="block text-lg font-medium text-zinc-100">
+                Address
+              </label>
+              <input
+                id="address"
+                name="address"
+                type="text"
+                required
+                minLength={5}
+                defaultValue={address}
+                placeholder="e.g. Alexanderplatz, Berlin"
+                className="w-full h-12 px-4 text-lg rounded-lg border border-zinc-700 bg-zinc-800 text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-500"
+              />
+            </div>
+
+            {error && (
+              <div className="p-3 rounded-lg bg-red-950/50 border border-red-800/50 text-red-400 text-sm font-medium">
+                {decodeURIComponent(error)}
+              </div>
+            )}
+
+            <button
+              type="submit"
+              className="w-full h-14 text-xl font-semibold rounded-lg bg-zinc-100 text-zinc-900 hover:bg-zinc-200"
+            >
+              Find Routes →
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  )
 }

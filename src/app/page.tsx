@@ -1,227 +1,188 @@
-"use client"
-
-import { useEffect, useState } from "react"
-import { useRouter } from "next/navigation"
-import useSWR from "swr"
+import { cookies } from "next/headers"
+import { redirect } from "next/navigation"
+import { kv } from "@vercel/kv"
 import { Plus, AlertTriangle } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { getDeviceId, getLocalStorageData, setLocalStorageData } from "@/lib/storage"
-import { DeviceData, Destination } from "@/types"
-import { detectDisruption, extractRouteSummary } from "@/lib/bvg"
+import { DeviceData } from "@/types"
+import { refreshJourney, getJourneys, detectDisruption, extractRouteSummary } from "@/lib/bvg"
 
-const fetcher = async (url: string) => {
-  const res = await fetch(url)
-  if (!res.ok) {
-    const errorData = await res.json().catch(() => ({}))
-    throw new Error(errorData.error || 'Fetch failed')
-  }
-  return res.json()
-}
+export const dynamic = "force-dynamic"
 
-export default function Dashboard() {
-  const router = useRouter()
-  const [deviceId, setDeviceId] = useState<string | null>(null)
-  const [localData, setLocalData] = useState<DeviceData | null>(null)
+export default async function Dashboard() {
+  const cookieStore = await cookies()
+  const deviceId = cookieStore.get("device_id")?.value
 
-  useEffect(() => {
-    setDeviceId(getDeviceId())
-  }, [])
-
-  useEffect(() => {
-    if (deviceId) {
-      setLocalData(getLocalStorageData<DeviceData>(`device:${deviceId}`))
-    }
-  }, [deviceId])
-
-  const { data: apiData, isLoading } = useSWR<DeviceData>(
-    deviceId ? `/api/device?deviceId=${deviceId}` : null,
-    fetcher,
-    {
-      refreshInterval: 300000, // 5 minutes
-      shouldRetryOnError: false,
-      revalidateOnFocus: false,
-      revalidateOnReconnect: true,
-      onSuccess: (data) => {
-        // Don't overwrite real localStorage data with a KV-unavailable shell
-        if (data && !(data as any)._kvUnavailable) {
-          setLocalStorageData(`device:${deviceId}`, data)
-        }
-      },
-    }
-  )
-
-  // When KV is unavailable, the API returns a shell with _kvUnavailable:true.
-  // In that case prefer the real localStorage data, or fall back to the shell
-  // (which has home:null, triggering setup for a brand new device).
-  const kvUnavailable = apiData && (apiData as any)._kvUnavailable
-  const deviceData = (!kvUnavailable && apiData) ? apiData : (localData || apiData || null)
-
-  useEffect(() => {
-    if (!deviceId || isLoading) return
-    // Redirect to setup whether there's no data at all (new device, KV down)
-    // or data exists but home hasn't been configured yet.
-    if (!deviceData || !deviceData.home) {
-      router.push("/setup")
-    }
-  }, [deviceId, deviceData, isLoading, router])
-
-  if (!deviceId || isLoading) {
+  // No cookie yet — the inline bootstrap script in layout will set it and reload.
+  // Render a neutral loading shell so there's no flash of broken UI.
+  if (!deviceId) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <div className="text-xl animate-pulse">Loading dashboard...</div>
+        <p className="text-xl text-zinc-400">Loading…</p>
       </div>
     )
   }
 
-  // deviceData is null briefly while the redirect above takes effect
-  if (!deviceData) return null
+  let deviceData: DeviceData | null = null
+  try {
+    deviceData = await kv.get<DeviceData>(`device:${deviceId}`)
+  } catch {
+    // KV unavailable — treat as new device
+  }
 
-  const destinations = deviceData.destinations || []
+  if (!deviceData || !deviceData.home) {
+    redirect("/setup")
+  }
+
+  const { home, destinations } = deviceData
+
+  // Fetch live journey statuses for every destination in parallel
+  type JourneyResult = {
+    dest: (typeof destinations)[number]
+    journey: any
+    disruption: { isDisrupted: boolean; reason?: string }
+    alternatives: any[]
+  }
+
+  const results: JourneyResult[] = await Promise.all(
+    destinations.map(async (dest) => {
+      let journey: any = null
+      let disruption = { isDisrupted: false, reason: undefined as string | undefined }
+      let alternatives: any[] = []
+
+      if (dest.preferredRouteToken) {
+        try {
+          journey = await refreshJourney(dest.preferredRouteToken)
+          disruption = detectDisruption(journey) as typeof disruption
+        } catch {
+          // leave journey null → shows "Status unknown"
+        }
+      }
+
+      if (disruption.isDisrupted && home) {
+        try {
+          const data = await getJourneys(home.stopId, dest.stopId)
+          alternatives = (data.journeys || []).slice(0, 3).filter(
+            (j: any) => !detectDisruption(j).isDisrupted
+          )
+        } catch {
+          // no alternatives available
+        }
+      }
+
+      return { dest, journey, disruption, alternatives }
+    })
+  )
 
   return (
     <div className="flex flex-col min-h-screen max-w-3xl mx-auto p-4 md:p-8">
+      {/* Auto-refresh every 5 minutes — pure vanilla JS, works on iOS 12 */}
+      <script dangerouslySetInnerHTML={{ __html: "setTimeout(function(){location.reload();},300000);" }} />
+
       <header className="mb-8">
-        <h1 className="text-sm font-medium text-muted-foreground uppercase tracking-widest">
+        <h1 className="text-sm font-medium text-zinc-400 uppercase tracking-widest">
           BVG Board
         </h1>
       </header>
 
-      <main className="flex-1 space-y-6 flex-col-gap-6">
+      <main className="flex-1 space-y-6">
         {destinations.length === 0 ? (
           <div className="text-center py-20 bg-zinc-900 rounded-xl border-2 border-dashed border-zinc-700">
             <h2 className="text-2xl font-semibold mb-2">No destinations yet</h2>
-            <p className="text-muted-foreground mb-6">Add a place to track your commute status.</p>
-            <Button onClick={() => router.push("/destination/new")} size="lg">
-              <Plus className="mr-2 h-5 w-5" /> Add Destination
-            </Button>
+            <p className="text-zinc-400 mb-6">Add a place to track your commute status.</p>
+            <a
+              href="/destination/new"
+              className="inline-flex items-center gap-2 px-6 py-3 rounded-lg bg-zinc-100 text-zinc-900 font-semibold text-lg hover:bg-zinc-200"
+            >
+              <Plus className="h-5 w-5" /> Add Destination
+            </a>
           </div>
         ) : (
-          <div className="space-y-6 flex-col-gap-6">
-            {destinations.map((dest) => (
-              <DestinationCard
-                key={dest.id}
-                destination={dest}
-                homeStopId={deviceData.home ? deviceData.home.stopId : ""}
-              />
-            ))}
+          <>
+            {results.map(({ dest, journey, disruption, alternatives }) => {
+              const isUnknown = !journey
+              const statusLabel = disruption.isDisrupted ? "Disrupted" : isUnknown ? "Status unknown" : "All good"
+              const statusClass = disruption.isDisrupted
+                ? "bg-red-600 text-white"
+                : isUnknown
+                ? "bg-zinc-700 text-zinc-300"
+                : "bg-zinc-100 text-zinc-900"
+              const cardClass = disruption.isDisrupted
+                ? "border-red-800 bg-red-950/20"
+                : "border-zinc-800 bg-zinc-900"
 
-            <Button
-              variant="outline"
-              className="w-full h-16 text-xl border-2 border-dashed"
-              onClick={() => router.push("/destination/new")}
+              return (
+                <a
+                  key={dest.id}
+                  href={`/destination/${dest.id}`}
+                  className={`block rounded-xl border overflow-hidden no-underline ${cardClass}`}
+                >
+                  <div className="p-6 pb-3">
+                    <div className="flex justify-between items-start gap-4">
+                      <h2 className="text-3xl font-bold text-zinc-100 truncate">
+                        {dest.name}
+                      </h2>
+                      <span className={`flex-shrink-0 inline-flex items-center gap-2 rounded-full px-3 py-1 text-base font-semibold ${statusClass}`}>
+                        <span className="w-2.5 h-2.5 rounded-full bg-current opacity-80" />
+                        {statusLabel}
+                      </span>
+                    </div>
+
+                    <div className="mt-2 text-xl text-zinc-400 flex items-center flex-wrap gap-1">
+                      {dest.preferredRouteSummary ? (
+                        dest.preferredRouteSummary.legs.map((leg, i) => (
+                          <span key={i} className="flex items-center">
+                            {i > 0 && <span className="mx-1 text-zinc-600">→</span>}
+                            <span className="font-bold text-zinc-100">{leg.line || leg.mode}</span>
+                          </span>
+                        ))
+                      ) : (
+                        "No preferred route set"
+                      )}
+                    </div>
+                  </div>
+
+                  {disruption.isDisrupted && (
+                    <div className="px-6 pb-6">
+                      <div className="p-4 bg-red-950/40 border border-red-800/40 rounded-lg">
+                        <div className="flex items-center text-red-400 font-bold text-base mb-2">
+                          <AlertTriangle className="mr-2 h-5 w-5" />
+                          {disruption.reason || "Disruption reported"}
+                        </div>
+                        {alternatives.length > 0 && (
+                          <>
+                            <p className="text-zinc-400 text-sm font-medium mb-2">Alternative routes:</p>
+                            <div className="space-y-2">
+                              {alternatives.map((alt, i) => {
+                                const altSummary = extractRouteSummary(alt)
+                                return (
+                                  <div key={i} className="flex items-center flex-wrap gap-1 bg-zinc-800 px-3 py-2 rounded border border-zinc-700">
+                                    {altSummary.legs.map((leg, li) => (
+                                      <span key={li} className="flex items-center">
+                                        {li > 0 && <span className="mx-1 text-zinc-500">→</span>}
+                                        <span className="text-sm font-bold text-zinc-100">{leg.line || leg.mode}</span>
+                                      </span>
+                                    ))}
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </a>
+              )
+            })}
+
+            <a
+              href="/destination/new"
+              className="flex items-center justify-center gap-2 w-full h-16 text-xl rounded-xl border-2 border-dashed border-zinc-700 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200 no-underline"
             >
-              <Plus className="mr-2 h-6 w-6" /> Add destination
-            </Button>
-          </div>
+              <Plus className="h-6 w-6" /> Add destination
+            </a>
+          </>
         )}
       </main>
     </div>
-  )
-}
-
-function DestinationCard({
-  destination,
-  homeStopId
-}: {
-  destination: Destination;
-  homeStopId: string;
-}) {
-  const router = useRouter()
-  const { data: journey, error } = useSWR(
-    destination.preferredRouteToken ? `/api/journeys/refresh?token=${destination.preferredRouteToken}` : null,
-    fetcher,
-    {
-      refreshInterval: 300000,
-      shouldRetryOnError: false,
-      revalidateOnFocus: false
-    }
-  )
-
-  const disruption = detectDisruption(journey)
-  const isUnknown = !!error || !journey
-
-  const { data: alternativesData } = useSWR(
-    disruption.isDisrupted && homeStopId ? `/api/journeys?from=${homeStopId}&to=${destination.stopId}` : null,
-    fetcher,
-    { shouldRetryOnError: false }
-  )
-
-  const statusColor = disruption.isDisrupted ? "destructive" : isUnknown ? "secondary" : "default"
-  const statusLabel = disruption.isDisrupted ? "Disrupted" : isUnknown ? "Status unknown" : "All good"
-
-  return (
-    <Card
-      className={`relative overflow-hidden cursor-pointer transition-colors ${disruption.isDisrupted ? "border-destructive bg-destructive/5" : ""}`}
-      onClick={() => router.push(`/destination/${destination.id}`)}
-    >
-      <CardHeader className="pb-3">
-        <div className="flex justify-between items-start">
-          <div className="pr-4">
-            <CardTitle className="text-3xl font-bold truncate">
-              {destination.name}
-            </CardTitle>
-          </div>
-          <Badge
-            variant={statusColor === "default" ? "default" : statusColor}
-            className="text-lg px-3 py-1"
-          >
-            <span className={`w-2.5 h-2.5 rounded-full mr-2 ${disruption.isDisrupted ? "bg-white" : isUnknown ? "bg-zinc-400" : "bg-white"}`} />
-            {statusLabel}
-          </Badge>
-        </div>
-
-        <div className="text-xl text-muted-foreground">
-          {destination.preferredRouteSummary ? (
-            <div className="flex items-center flex-wrap">
-              {destination.preferredRouteSummary.legs.map((leg, i) => (
-                <span key={i} className="flex items-center">
-                  {i > 0 && <span className="mx-2 text-zinc-500">→</span>}
-                  <span className="font-bold text-zinc-100">{leg.line || leg.mode}</span>
-                </span>
-              ))}
-            </div>
-          ) : (
-            "No preferred route set"
-          )}
-        </div>
-      </CardHeader>
-
-      {disruption.isDisrupted && (
-        <CardContent className="pt-0 pb-6">
-          <div className="p-4 bg-destructive/10 border border-destructive/20 rounded-lg">
-            <div className="flex items-center text-destructive font-bold text-lg mb-2">
-              <AlertTriangle className="mr-2 h-5 w-5" />
-              {disruption.reason || "Disruption reported"}
-            </div>
-
-            <p className="text-muted-foreground font-medium mb-3">Alternative routes:</p>
-            <div className="space-y-3">
-              {alternativesData && alternativesData.journeys && alternativesData.journeys.slice(0, 3).map((alt: any, i: number) => {
-                const altSummary = extractRouteSummary(alt)
-                const altDisruption = detectDisruption(alt)
-                if (altDisruption.isDisrupted) return null
-
-                return (
-                  <div key={i} className="flex justify-between items-center bg-zinc-800 p-2 rounded border border-zinc-700">
-                    <div className="flex items-center flex-wrap gap-1">
-                      {altSummary.legs.map((leg, li) => (
-                        <span key={li} className="font-bold text-sm bg-zinc-700 px-1.5 py-0.5 rounded text-zinc-100">
-                          {leg.line || leg.mode}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )
-              })}
-              {(!alternativesData || !alternativesData.journeys || alternativesData.journeys.length === 0) && (
-                <p className="text-sm italic">Searching for alternatives...</p>
-              )}
-            </div>
-          </div>
-        </CardContent>
-      )}
-    </Card>
   )
 }
