@@ -24,7 +24,6 @@ import { extractRouteSummary } from "@/lib/bvg"
 const step1Schema = z.object({
     name: z.string().min(2, "Name is required"),
     address: z.string().min(5, "Address must be at least 5 characters"),
-    arrivalTime: z.string().optional(),
 })
 
 export default function NewDestinationPage() {
@@ -39,7 +38,7 @@ export default function NewDestinationPage() {
 
     const form = useForm<z.infer<typeof step1Schema>>({
         resolver: zodResolver(step1Schema),
-        defaultValues: { name: "", address: "", arrivalTime: "" },
+        defaultValues: { name: "", address: "" },
     })
 
     // Step 1 -> Step 2
@@ -68,8 +67,9 @@ export default function NewDestinationPage() {
 
             // Find nearby stop
             const stopRes = await fetch(`/api/stops/nearby?lat=${geoData.lat}&lon=${geoData.lon}`)
+            if (!stopRes.ok) throw new Error("Could not find any BVG stops nearby")
             const stops = await stopRes.json()
-            if (!stops || stops.length === 0) throw new Error("No BVG stops found near destination")
+            if (!Array.isArray(stops) || stops.length === 0) throw new Error("No BVG stops found near destination")
             setTargetStop(stops[0])
 
             // Get journeys
@@ -100,7 +100,6 @@ export default function NewDestinationPage() {
                     stopName: targetStop.name,
                     preferredRouteToken: journey.refreshToken,
                     preferredRouteSummary: routeSummary,
-                    arrivalTime: form.getValues().arrivalTime,
                 }
             }
 
@@ -177,19 +176,7 @@ export default function NewDestinationPage() {
                                             </FormItem>
                                         )}
                                     />
-                                    <FormField
-                                        control={form.control}
-                                        name="arrivalTime"
-                                        render={({ field }) => (
-                                            <FormItem>
-                                                <FormLabel className="text-lg">Target Arrival Time (Optional)</FormLabel>
-                                                <FormControl>
-                                                    <Input type="time" className="text-lg h-12" {...field} />
-                                                </FormControl>
-                                                <FormMessage />
-                                            </FormItem>
-                                        )}
-                                    />
+                                    {/* Arrival time removed */}
                                     {error && <p className="text-destructive font-medium">{error}</p>}
                                     <Button type="submit" className="w-full h-14 text-xl" disabled={loading}>
                                         {loading ? "Finding routes..." : "Find Routes"} <ChevronRight className="ml-2 h-5 w-5" />
@@ -228,15 +215,9 @@ export default function NewDestinationPage() {
                                                         </div>
                                                     ))}
                                                 </div>
-                                                <div className="text-2xl font-bold">
-                                                    {summary.duration} min
-                                                </div>
                                             </div>
 
                                             <div className="flex justify-between items-end text-muted-foreground font-medium">
-                                                <div>
-                                                    {summary.transfers} transfer{summary.transfers !== 1 && 's'}
-                                                </div>
                                                 <div className="text-lg">
                                                     Next: <span className="text-black font-bold">
                                                         {firstDeparture.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}

@@ -19,7 +19,6 @@ export interface Destination {
     stopName: string                        // e.g. "Alexanderplatz U"
     preferredRouteToken: string | null      // refreshToken of chosen journey
     preferredRouteSummary: RouteSummary | null
-    arrivalTime?: string                    // optional, e.g. "09:00"
     createdAt: string
 }
 

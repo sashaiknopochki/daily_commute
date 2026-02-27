@@ -36,7 +36,6 @@ import { Destination } from "@/types"
 const editSchema = z.object({
     name: z.string().min(2, "Name is required"),
     address: z.string().min(5, "Address must be at least 5 characters"),
-    arrivalTime: z.string().optional(),
 })
 
 export default function EditDestinationPage({ params }: { params: Promise<{ id: string }> }) {
@@ -55,7 +54,7 @@ export default function EditDestinationPage({ params }: { params: Promise<{ id: 
 
     const form = useForm<z.infer<typeof editSchema>>({
         resolver: zodResolver(editSchema),
-        defaultValues: { name: "", address: "", arrivalTime: "" },
+        defaultValues: { name: "", address: "" },
     })
 
     useEffect(() => {
@@ -78,7 +77,7 @@ export default function EditDestinationPage({ params }: { params: Promise<{ id: 
 
                 setDestination(dest)
                 setHomeStop(data.home)
-                form.reset({ name: dest.name, address: dest.address, arrivalTime: dest.arrivalTime || "" })
+                form.reset({ name: dest.name, address: dest.address })
             } catch (err: any) {
                 setError(err.message)
             } finally {
@@ -119,7 +118,6 @@ export default function EditDestinationPage({ params }: { params: Promise<{ id: 
                         body: JSON.stringify({
                             deviceId, updates: {
                                 name: values.name,
-                                arrivalTime: values.arrivalTime
                             }
                         })
                     })
@@ -132,7 +130,6 @@ export default function EditDestinationPage({ params }: { params: Promise<{ id: 
                         existingData.destinations[idx] = {
                             ...existingData.destinations[idx],
                             name: values.name,
-                            arrivalTime: values.arrivalTime
                         }
                         localStorage.setItem(`device:${deviceId}`, JSON.stringify(existingData))
                     }
@@ -165,7 +162,6 @@ export default function EditDestinationPage({ params }: { params: Promise<{ id: 
                             stopName: newTargetStop.name,
                             preferredRouteToken: journey.refreshToken,
                             preferredRouteSummary: summary,
-                            arrivalTime: form.getValues().arrivalTime,
                         }
                     })
                 })
@@ -183,7 +179,6 @@ export default function EditDestinationPage({ params }: { params: Promise<{ id: 
                         stopName: newTargetStop.name,
                         preferredRouteToken: journey.refreshToken,
                         preferredRouteSummary: summary,
-                        arrivalTime: form.getValues().arrivalTime,
                     }
                     localStorage.setItem(`device:${deviceId}`, JSON.stringify(existingData))
                 }
@@ -270,19 +265,7 @@ export default function EditDestinationPage({ params }: { params: Promise<{ id: 
                                             </FormItem>
                                         )}
                                     />
-                                    <FormField
-                                        control={form.control}
-                                        name="arrivalTime"
-                                        render={({ field }) => (
-                                            <FormItem>
-                                                <FormLabel className="text-lg">Target Arrival Time (Optional)</FormLabel>
-                                                <FormControl>
-                                                    <Input type="time" className="text-lg h-12" {...field} />
-                                                </FormControl>
-                                                <FormMessage />
-                                            </FormItem>
-                                        )}
-                                    />
+                                    {/* Arrival time removed */}
                                     {error && <p className="text-destructive font-medium">{error}</p>}
                                     <Button type="submit" className="w-full h-14 text-xl" disabled={saving}>
                                         {saving ? "Saving..." : "Save Details"} <Save className="ml-2 h-5 w-5" />
@@ -332,7 +315,6 @@ export default function EditDestinationPage({ params }: { params: Promise<{ id: 
                                                         </div>
                                                     ))}
                                                 </div>
-                                                <div className="text-2xl font-bold">{summary.duration} min</div>
                                             </div>
                                         </CardContent>
                                     </Card>

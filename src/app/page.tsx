@@ -199,11 +199,6 @@ function DestinationCard({
             <CardTitle className="text-3xl font-bold truncate">
               {destination.name}
             </CardTitle>
-            {destination.arrivalTime && (
-              <p className="text-sm font-medium text-muted-foreground mt-1">
-                Must arrive by {destination.arrivalTime}
-              </p>
-            )}
           </div>
           <Badge
             variant={statusColor === "default" ? "default" : statusColor}
