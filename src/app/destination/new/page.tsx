@@ -136,7 +136,7 @@ export default function NewDestinationPage() {
     }
 
     return (
-        <div className="min-h-screen bg-slate-50 p-4 md:p-8">
+        <div className="min-h-screen p-4 md:p-8">
             <div className="max-w-2xl mx-auto">
                 <Button variant="ghost" onClick={() => step === 1 ? router.back() : setStep(1)} className="mb-6">
                     <ArrowLeft className="mr-2 h-4 w-4" /> {step === 1 ? "Back" : "Back to details"}
@@ -189,7 +189,7 @@ export default function NewDestinationPage() {
                     <div className="space-y-6">
                         <h2 className="text-3xl font-bold">Choose your preferred route</h2>
                         <p className="text-muted-foreground">
-                            From <span className="font-bold text-black">{homeStop?.stopName}</span> to <span className="font-bold text-black">{targetStop?.name}</span>
+                            From <span className="font-bold text-foreground">{homeStop ? homeStop.stopName : ""}</span> to <span className="font-bold text-foreground">{targetStop ? targetStop.name : ""}</span>
                         </p>
 
                         <div className="space-y-4">
@@ -219,7 +219,7 @@ export default function NewDestinationPage() {
 
                                             <div className="flex justify-between items-end text-muted-foreground font-medium">
                                                 <div className="text-lg">
-                                                    Next: <span className="text-black font-bold">
+                                                    Next: <span className="text-foreground font-bold">
                                                         {firstDeparture.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                                     </span>
                                                 </div>
@@ -230,7 +230,7 @@ export default function NewDestinationPage() {
                             })}
 
                             {journeys.length === 0 && (
-                                <div className="text-center py-10 bg-white rounded-lg border">
+                                <div className="text-center py-10 bg-zinc-900 rounded-lg border border-zinc-700">
                                     No routes found for this journey.
                                 </div>
                             )}

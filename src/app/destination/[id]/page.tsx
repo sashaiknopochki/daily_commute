@@ -209,7 +209,7 @@ export default function EditDestinationPage({ params }: { params: Promise<{ id: 
     if (loading) return <div className="p-8 text-center">Loading...</div>
 
     return (
-        <div className="min-h-screen bg-slate-50 p-4 md:p-8">
+        <div className="min-h-screen p-4 md:p-8">
             <div className="max-w-2xl mx-auto">
                 <Button variant="ghost" onClick={() => router.push("/")} className="mb-6">
                     <ArrowLeft className="mr-2 h-4 w-4" /> Back to dashboard
