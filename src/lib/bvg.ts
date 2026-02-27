@@ -48,9 +48,23 @@ export function extractRouteSummary(journey: any): RouteSummary {
         direction: leg.direction,
     }));
 
-    const departure = new Date(journey.legs[0].departure);
-    const arrival = new Date(journey.legs[journey.legs.length - 1].arrival);
-    const duration = Math.round((arrival.getTime() - departure.getTime()) / 60000);
+    const firstLeg = journey.legs[0];
+    const lastLeg = journey.legs[journey.legs.length - 1];
+
+    const depTime = firstLeg.prognosedDeparture || firstLeg.departure;
+    const arrTime = lastLeg.prognosedArrival || lastLeg.arrival;
+
+    let duration = 0;
+    if (depTime && arrTime) {
+        const departure = new Date(depTime);
+        const arrival = new Date(arrTime);
+        duration = Math.round((arrival.getTime() - departure.getTime()) / 60000);
+    }
+
+    // Sanity check for duration
+    if (isNaN(duration) || duration < 0 || duration > 1440) {
+        duration = 0;
+    }
 
     const transfers = journey.legs.filter((leg: any) => leg.mode !== 'walking').length - 1;
 
@@ -64,30 +78,35 @@ export function extractRouteSummary(journey: any): RouteSummary {
 export function detectDisruption(journey: any) {
     if (!journey || !journey.legs) return { isDisrupted: false };
 
-    // Any leg.cancelled === true
-    const hasCancelled = journey.legs.some((leg: any) => leg.cancelled === true);
-
-    // Any remarks entry with type === "warning" or type === "status"
     let disruptionReason: string | undefined;
-    const hasWarning = journey.legs.some((leg: any) => {
-        if (leg.remarks) {
-            const warning = leg.remarks.find((r: any) => r.type === 'warning' || r.type === 'status');
-            if (warning) {
-                disruptionReason = warning.text;
-                return true;
-            }
-        }
-        return false;
-    });
 
-    // Any leg.reachable === false
+    // Check journey-level remarks first (common for strikes)
+    const allRemarks = [
+        ...(journey.remarks || []),
+        ...journey.legs.flatMap((l: any) => l.remarks || [])
+    ];
+
+    const criticalRemark = allRemarks.find((r: any) =>
+        r.type === 'warning' ||
+        r.type === 'status' ||
+        r.text?.toLowerCase().includes('streik') ||
+        r.text?.toLowerCase().includes('strike') ||
+        r.text?.toLowerCase().includes('ausfall') ||
+        r.text?.toLowerCase().includes('cancelled')
+    );
+
+    if (criticalRemark) {
+        disruptionReason = criticalRemark.text;
+    }
+
+    const hasCancelled = journey.legs.some((leg: any) => leg.cancelled === true);
     const isUnreachable = journey.legs.some((leg: any) => leg.reachable === false);
 
-    const isDisrupted = hasCancelled || hasWarning || isUnreachable;
+    const isDisrupted = hasCancelled || !!criticalRemark || isUnreachable;
 
     if (isDisrupted && !disruptionReason) {
         if (hasCancelled) disruptionReason = 'Leg cancelled';
-        if (isUnreachable) disruptionReason = 'Destination unreachable';
+        if (isUnreachable) disruptionReason = 'Leg unreachable';
     }
 
     return {

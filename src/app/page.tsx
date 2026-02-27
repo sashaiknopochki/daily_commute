@@ -56,7 +56,9 @@ export default function Dashboard() {
     deviceId ? `/api/device?deviceId=${deviceId}` : null,
     fetcher,
     {
-      refreshInterval: 600000, // 10 minutes
+      refreshInterval: 300000, // 5 minutes
+      revalidateOnFocus: false,
+      revalidateOnReconnect: true,
       onSuccess: (data) => {
         if (data && !(data as any).error) {
           setLocalStorageData(`device:${deviceId}`, data)
@@ -78,13 +80,7 @@ export default function Dashboard() {
     }
   }, [deviceData, isLoading, router])
 
-  // Polling fallback for older browsers
-  useEffect(() => {
-    const interval = setInterval(() => {
-      mutate()
-    }, 600000)
-    return () => clearInterval(interval)
-  }, [mutate])
+  // Polling fallback removed in favor of SWR internal refresh
 
   if (isLoading || !deviceData) {
     return (
@@ -180,7 +176,10 @@ function DestinationCard({
   const { data: journey, error } = useSWR(
     destination.preferredRouteToken ? `/api/journeys/refresh?token=${destination.preferredRouteToken}` : null,
     fetcher,
-    { refreshInterval: 600000 } // 10 minutes
+    {
+      refreshInterval: 300000,
+      revalidateOnFocus: false
+    }
   )
 
   const disruption = detectDisruption(journey)
@@ -233,8 +232,6 @@ function DestinationCard({
               ))}
               <span className="mx-3 text-slate-300">·</span>
               <span>{destination.preferredRouteSummary.duration} min</span>
-              <span className="mx-3 text-slate-300">·</span>
-              <span>{destination.preferredRouteSummary.transfers} transfer{destination.preferredRouteSummary.transfers !== 1 && 's'}</span>
             </div>
           ) : (
             "No preferred route set"
