@@ -1,4 +1,11 @@
-import { v4 as uuidv4 } from 'uuid';
+function generateUUID(): string {
+    const bytes = new Uint8Array(16);
+    crypto.getRandomValues(bytes);
+    bytes[6] = (bytes[6] & 0x0f) | 0x40; // version 4
+    bytes[8] = (bytes[8] & 0x3f) | 0x80; // RFC 4122 variant
+    const hex = Array.from(bytes, function(b) { return b.toString(16).padStart(2, '0'); }).join('');
+    return hex.slice(0, 8) + '-' + hex.slice(8, 12) + '-' + hex.slice(12, 16) + '-' + hex.slice(16, 20) + '-' + hex.slice(20);
+}
 
 const DEVICE_ID_KEY = 'bvg_board_device_id';
 
@@ -7,7 +14,7 @@ export function getDeviceId(): string {
 
     let deviceId = localStorage.getItem(DEVICE_ID_KEY);
     if (!deviceId) {
-        deviceId = uuidv4();
+        deviceId = generateUUID();
         localStorage.setItem(DEVICE_ID_KEY, deviceId);
     }
     return deviceId;
