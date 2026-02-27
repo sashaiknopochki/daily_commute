@@ -224,8 +224,6 @@ function DestinationCard({
                   <span className="font-bold text-slate-800">{leg.line || leg.mode}</span>
                 </span>
               ))}
-              <span className="mx-3 text-slate-300">·</span>
-              <span>{destination.preferredRouteSummary.duration} min</span>
             </div>
           ) : (
             "No preferred route set"
@@ -256,9 +254,6 @@ function DestinationCard({
                           {leg.line || leg.mode}
                         </span>
                       ))}
-                    </div>
-                    <div className="font-bold whitespace-nowrap ml-4">
-                      {altSummary.duration} min
                     </div>
                   </div>
                 )
