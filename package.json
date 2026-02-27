@@ -38,5 +38,9 @@
     "shadcn": "^3.8.5",
     "tailwindcss": "^4.2.1",
     "typescript": "^5"
-  }
+  },
+  "browserslist": [
+    "defaults",
+    "ios >= 12"
+  ]
 }
