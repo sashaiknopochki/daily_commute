@@ -191,13 +191,19 @@ export default function EditDestinationPage({ params }: { params: Promise<{ id: 
     }
 
     async function handleDelete() {
+        const deviceId = getDeviceId()
         try {
-            const deviceId = getDeviceId()
-            await fetch(`/api/destinations/${id}?deviceId=${deviceId}`, { method: "DELETE" })
-            router.push("/")
-        } catch (err: any) {
-            setError("Delete failed")
+            const res = await fetch(`/api/destinations/${id}?deviceId=${deviceId}`, { method: "DELETE" })
+            if (!res.ok) throw new Error("API delete failed")
+        } catch (err) {
+            // KV may be unavailable — remove from localStorage directly
+            const existingData = JSON.parse(localStorage.getItem(`device:${deviceId}`) || '{}')
+            if (existingData.destinations) {
+                existingData.destinations = existingData.destinations.filter((d: any) => d.id !== id)
+                localStorage.setItem(`device:${deviceId}`, JSON.stringify(existingData))
+            }
         }
+        router.push("/")
     }
 
     if (loading) return <div className="p-8 text-center">Loading...</div>

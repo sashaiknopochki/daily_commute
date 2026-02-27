@@ -44,28 +44,39 @@ export default function Dashboard() {
       revalidateOnFocus: false,
       revalidateOnReconnect: true,
       onSuccess: (data) => {
-        if (data && !(data as any).error) {
+        // Don't overwrite real localStorage data with a KV-unavailable shell
+        if (data && !(data as any)._kvUnavailable) {
           setLocalStorageData(`device:${deviceId}`, data)
         }
       },
     }
   )
 
-  const deviceData = apiData || localData
+  // When KV is unavailable, the API returns a shell with _kvUnavailable:true.
+  // In that case prefer the real localStorage data, or fall back to the shell
+  // (which has home:null, triggering setup for a brand new device).
+  const kvUnavailable = apiData && (apiData as any)._kvUnavailable
+  const deviceData = (!kvUnavailable && apiData) ? apiData : (localData || apiData || null)
 
   useEffect(() => {
-    if (deviceData && !deviceData.home && !isLoading) {
+    if (!deviceId || isLoading) return
+    // Redirect to setup whether there's no data at all (new device, KV down)
+    // or data exists but home hasn't been configured yet.
+    if (!deviceData || !deviceData.home) {
       router.push("/setup")
     }
-  }, [deviceData, isLoading, router])
+  }, [deviceId, deviceData, isLoading, router])
 
-  if (isLoading || !deviceData) {
+  if (!deviceId || isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-xl animate-pulse">Loading dashboard...</div>
       </div>
     )
   }
+
+  // deviceData is null briefly while the redirect above takes effect
+  if (!deviceData) return null
 
   const destinations = deviceData.destinations || []
 

@@ -16,7 +16,10 @@ export async function GET(request: Request) {
         return Response.json(data || { deviceId, home: null, destinations: [], createdAt: new Date().toISOString() });
     } catch (error) {
         console.error('KV Error:', error);
-        return Response.json({ error: 'Storage unreachable', fallback: true }, { status: 500 });
+        // Return 200 with a marker instead of 500 so the client can fall back to
+        // localStorage without SWR throwing. The client ignores this shell and uses
+        // its local cache if available, or treats it as a new device if not.
+        return Response.json({ deviceId, home: null, destinations: [], createdAt: new Date().toISOString(), _kvUnavailable: true });
     }
 }
 
