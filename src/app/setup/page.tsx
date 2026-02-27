@@ -62,15 +62,27 @@ export default function SetupPage() {
                 stopName: stops[0].name,
             }
 
-            // 3. Save to KV
+            // 3. Save to KV (with local fallback)
             const deviceId = getDeviceId()
-            const saveRes = await fetch("/api/home", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ deviceId, home: homeStop }),
-            })
+            try {
+                const saveRes = await fetch("/api/home", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ deviceId, home: homeStop }),
+                })
 
-            if (!saveRes.ok) throw new Error("Failed to save home address")
+                if (!saveRes.ok) throw new Error("API save failed")
+            } catch (err) {
+                console.warn("Storage unreachable, falling back to local storage")
+                // On failure, we at least save it locally so the dashboard can find it
+                const existingData = JSON.parse(localStorage.getItem(`device:${deviceId}`) || '{"destinations":[]}')
+                localStorage.setItem(`device:${deviceId}`, JSON.stringify({
+                    ...existingData,
+                    deviceId,
+                    home: homeStop,
+                    createdAt: existingData.createdAt || new Date().toISOString()
+                }))
+            }
 
             router.push("/")
         } catch (err: any) {

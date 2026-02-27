@@ -60,10 +60,18 @@ export default function EditDestinationPage({ params }: { params: Promise<{ id: 
 
     useEffect(() => {
         async function init() {
+            const deviceId = getDeviceId()
             try {
-                const deviceId = getDeviceId()
-                const res = await fetch(`/api/device?deviceId=${deviceId}`)
-                const data = await res.json()
+                let data;
+                try {
+                    const res = await fetch(`/api/device?deviceId=${deviceId}`)
+                    data = await res.json()
+                    if (data.error) throw new Error("API error")
+                } catch (err) {
+                    data = JSON.parse(localStorage.getItem(`device:${deviceId}`) || 'null')
+                }
+
+                if (!data) throw new Error("Device data not found")
 
                 const dest = data.destinations.find((d: any) => d.id === id)
                 if (!dest) throw new Error("Destination not found")
@@ -104,16 +112,31 @@ export default function EditDestinationPage({ params }: { params: Promise<{ id: 
                 setShowJourneys(true)
             } else {
                 // Just update name
-                await fetch(`/api/destinations/${id}`, {
-                    method: "PATCH",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        deviceId, updates: {
+                try {
+                    const res = await fetch(`/api/destinations/${id}`, {
+                        method: "PATCH",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            deviceId, updates: {
+                                name: values.name,
+                                arrivalTime: values.arrivalTime
+                            }
+                        })
+                    })
+                    if (!res.ok) throw new Error("API Patch failed")
+                } catch (err) {
+                    console.warn("API Patch failed, falling back to local storage")
+                    const existingData = JSON.parse(localStorage.getItem(`device:${deviceId}`) || '{}')
+                    const idx = existingData.destinations?.findIndex((d: any) => d.id === id)
+                    if (idx !== -1) {
+                        existingData.destinations[idx] = {
+                            ...existingData.destinations[idx],
                             name: values.name,
                             arrivalTime: values.arrivalTime
                         }
-                    })
-                })
+                        localStorage.setItem(`device:${deviceId}`, JSON.stringify(existingData))
+                    }
+                }
                 router.push("/")
             }
         } catch (err: any) {
@@ -129,12 +152,31 @@ export default function EditDestinationPage({ params }: { params: Promise<{ id: 
             const deviceId = getDeviceId()
             const summary = extractRouteSummary(journey)
 
-            await fetch(`/api/destinations/${id}`, {
-                method: "PATCH",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    deviceId,
-                    updates: {
+            try {
+                const res = await fetch(`/api/destinations/${id}`, {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        deviceId,
+                        updates: {
+                            name: form.getValues().name,
+                            address: form.getValues().address,
+                            stopId: newTargetStop.id,
+                            stopName: newTargetStop.name,
+                            preferredRouteToken: journey.refreshToken,
+                            preferredRouteSummary: summary,
+                            arrivalTime: form.getValues().arrivalTime,
+                        }
+                    })
+                })
+                if (!res.ok) throw new Error("API Path failed")
+            } catch (err) {
+                console.warn("API Patch failed, falling back to local storage")
+                const existingData = JSON.parse(localStorage.getItem(`device:${deviceId}`) || '{}')
+                const idx = existingData.destinations?.findIndex((d: any) => d.id === id)
+                if (idx !== -1) {
+                    existingData.destinations[idx] = {
+                        ...existingData.destinations[idx],
                         name: form.getValues().name,
                         address: form.getValues().address,
                         stopId: newTargetStop.id,
@@ -143,8 +185,9 @@ export default function EditDestinationPage({ params }: { params: Promise<{ id: 
                         preferredRouteSummary: summary,
                         arrivalTime: form.getValues().arrivalTime,
                     }
-                })
-            })
+                    localStorage.setItem(`device:${deviceId}`, JSON.stringify(existingData))
+                }
+            }
             router.push("/")
         } catch (err: any) {
             setError(err.message)

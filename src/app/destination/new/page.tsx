@@ -49,9 +49,16 @@ export default function NewDestinationPage() {
         try {
             // Get home stop
             const deviceId = getDeviceId()
-            const deviceRes = await fetch(`/api/device?deviceId=${deviceId}`)
-            const deviceData = await deviceRes.json()
-            if (!deviceData.home) throw new Error("Home address not set")
+            let deviceData;
+            try {
+                const deviceRes = await fetch(`/api/device?deviceId=${deviceId}`)
+                deviceData = await deviceRes.json()
+                if (deviceData.error) throw new Error("API error")
+            } catch (err) {
+                deviceData = JSON.parse(localStorage.getItem(`device:${deviceId}`) || '{}')
+            }
+
+            if (!deviceData?.home) throw new Error("Home address not set")
             setHomeStop(deviceData.home)
 
             // Geocode destination
@@ -97,13 +104,31 @@ export default function NewDestinationPage() {
                 }
             }
 
-            const res = await fetch("/api/destinations", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(payload)
-            })
+            try {
+                const res = await fetch("/api/destinations", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload)
+                })
 
-            if (!res.ok) throw new Error("Failed to save destination")
+                if (!res.ok) throw new Error("API save failed")
+            } catch (err) {
+                console.warn("Storage unreachable, falling back to local storage")
+                const existingDataString = localStorage.getItem(`device:${deviceId}`)
+                const existingData: DeviceData = existingDataString
+                    ? JSON.parse(existingDataString)
+                    : { deviceId, home: homeStop, destinations: [], createdAt: new Date().toISOString() }
+
+                const newDest = {
+                    ...payload.destination,
+                    id: Math.random().toString(36).substring(2, 9),
+                    createdAt: new Date().toISOString()
+                }
+
+                existingData.destinations.push(newDest as any)
+                localStorage.setItem(`device:${deviceId}`, JSON.stringify(existingData))
+            }
+
             router.push("/")
         } catch (err: any) {
             setError(err.message)
