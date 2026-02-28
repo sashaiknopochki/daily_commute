@@ -48,23 +48,57 @@ export default async function Dashboard() {
       let disruption = { isDisrupted: false, reason: undefined as string | undefined }
       let alternatives: any[] = []
 
-      if (dest.preferredRouteToken) {
-        try {
-          journey = await refreshJourney(dest.preferredRouteToken)
-          disruption = detectDisruption(journey) as typeof disruption
-        } catch {
-          // leave journey null → shows "Status unknown"
-        }
-      }
+      // Primary check: ask the journey planner for current options.
+      // This is the ground truth — during a strike the preferred line simply
+      // won't appear in any returned journey, even if the stored refresh token
+      // still looks valid.
+      try {
+        const freshData = await getJourneys(home!.stopId, dest.stopId)
+        const freshJourneys: any[] = freshData.journeys || []
 
-      if (disruption.isDisrupted && home) {
-        try {
-          const data = await getJourneys(home.stopId, dest.stopId)
-          alternatives = (data.journeys || []).slice(0, 3).filter(
-            (j: any) => !detectDisruption(j).isDisrupted
+        // Transit lines the user chose as their preferred route
+        const preferredLines = (dest.preferredRouteSummary?.legs ?? [])
+          .filter((l) => l.mode !== "walking" && l.line)
+          .map((l) => l.line as string)
+
+        if (preferredLines.length > 0) {
+          // Look for a fresh journey that still uses at least one preferred line
+          const preferredJourney = freshJourneys.find((j: any) =>
+            (j.legs ?? []).some((l: any) => preferredLines.includes(l.line?.name))
           )
-        } catch {
-          // no alternatives available
+
+          if (!preferredJourney) {
+            // Preferred line absent from all current journey options → strike / outage
+            disruption = {
+              isDisrupted: true,
+              reason: "Preferred line not currently operating",
+            }
+            alternatives = freshJourneys
+              .filter((j: any) => !detectDisruption(j).isDisrupted)
+              .slice(0, 3)
+          } else {
+            journey = preferredJourney
+            disruption = detectDisruption(journey) as typeof disruption
+            if (disruption.isDisrupted) {
+              alternatives = freshJourneys
+                .filter((j: any) => j !== journey && !detectDisruption(j).isDisrupted)
+                .slice(0, 3)
+            }
+          }
+        } else {
+          // No transit legs in preferred summary (walking-only or no route set yet)
+          journey = freshJourneys[0] ?? null
+          if (journey) disruption = detectDisruption(journey) as typeof disruption
+        }
+      } catch {
+        // getJourneys failed — fall back to the stored refresh token
+        if (dest.preferredRouteToken) {
+          try {
+            journey = await refreshJourney(dest.preferredRouteToken)
+            disruption = detectDisruption(journey) as typeof disruption
+          } catch {
+            // leave journey null → shows "Status unknown"
+          }
         }
       }
 
