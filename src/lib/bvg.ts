@@ -95,12 +95,9 @@ export function detectDisruption(journey: any) {
     ];
 
     const criticalRemark = allRemarks.find((r: any) =>
-        r.type === 'warning' ||
-        r.type === 'status' ||
         r.text?.toLowerCase().includes('streik') ||
         r.text?.toLowerCase().includes('strike') ||
         r.text?.toLowerCase().includes('ausfall') ||
-        r.text?.toLowerCase().includes('geändert') ||
         r.text?.toLowerCase().includes('cancelled')
     );
 

@@ -62,13 +62,13 @@ export default async function Dashboard() {
           .map((l) => l.line as string)
 
         if (preferredLines.length > 0) {
-          // Look for a fresh journey that still uses at least one preferred line
-          const preferredJourney = freshJourneys.find((j: any) =>
+          // Collect every fresh journey that uses at least one preferred line
+          const withPreferred = freshJourneys.filter((j: any) =>
             (j.legs ?? []).some((l: any) => preferredLines.includes(l.line?.name))
           )
 
-          if (!preferredJourney) {
-            // Preferred line absent from all current journey options → strike / outage
+          if (withPreferred.length === 0) {
+            // Line absent from planner results entirely → strike / outage
             disruption = {
               isDisrupted: true,
               reason: "Preferred line not currently operating",
@@ -77,11 +77,17 @@ export default async function Dashboard() {
               .filter((j: any) => !detectDisruption(j).isDisrupted)
               .slice(0, 3)
           } else {
-            journey = preferredJourney
-            disruption = detectDisruption(journey) as typeof disruption
+            // Pick the first trip with no disruption flags.
+            // Only escalate to Disrupted if every preferred-line journey is affected
+            // (a single cancelled departure doesn't mean the line is down).
+            const cleanJourney = withPreferred.find((j: any) => !detectDisruption(j).isDisrupted)
+            journey = cleanJourney ?? withPreferred[0]
+            disruption = cleanJourney
+              ? { isDisrupted: false, reason: undefined }
+              : (detectDisruption(withPreferred[0]) as typeof disruption)
             if (disruption.isDisrupted) {
               alternatives = freshJourneys
-                .filter((j: any) => j !== journey && !detectDisruption(j).isDisrupted)
+                .filter((j: any) => !withPreferred.includes(j) && !detectDisruption(j).isDisrupted)
                 .slice(0, 3)
             }
           }
