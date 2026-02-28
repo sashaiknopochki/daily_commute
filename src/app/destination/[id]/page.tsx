@@ -129,11 +129,11 @@ export default async function EditDestinationPage({
                     className="w-full text-left rounded-xl border border-zinc-700 bg-zinc-900 p-6 hover:border-zinc-500 cursor-pointer"
                   >
                     <div className="flex items-center flex-wrap gap-2">
-                      {summary.legs.map((leg, li) => (
+                      {summary.legs.filter((l: any) => l.line).map((leg, li) => (
                         <span key={li} className="flex items-center">
                           {li > 0 && <span className="mx-2 text-zinc-500">→</span>}
                           <span className="bg-zinc-800 text-zinc-100 rounded px-2 py-1 text-sm font-bold border border-zinc-700">
-                            {leg.line || leg.mode}
+                            {leg.line}
                           </span>
                         </span>
                       ))}
