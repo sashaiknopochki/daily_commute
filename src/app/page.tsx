@@ -167,14 +167,15 @@ export default async function Dashboard() {
                     </div>
 
                     <div className="mt-2 text-xl text-zinc-400 flex items-center flex-wrap gap-1">
-                      {dest.preferredRouteSummary ? (
-                        dest.preferredRouteSummary.legs.map((leg, i) => (
+                      {dest.preferredRouteSummary ? (() => {
+                        const transitLegs = dest.preferredRouteSummary.legs.filter((l: any) => l.mode !== 'walking')
+                        return transitLegs.map((leg: any, i: number) => (
                           <span key={i} className="flex items-center">
                             {i > 0 && <span className="mx-1 text-zinc-600">→</span>}
                             <span className="font-bold text-zinc-100">{leg.line || leg.mode}</span>
                           </span>
                         ))
-                      ) : (
+                      })() : (
                         "No preferred route set"
                       )}
                     </div>
@@ -195,7 +196,7 @@ export default async function Dashboard() {
                                 const altSummary = extractRouteSummary(alt)
                                 return (
                                   <div key={i} className="flex items-center flex-wrap gap-1 bg-zinc-800 px-3 py-2 rounded border border-zinc-700">
-                                    {altSummary.legs.map((leg, li) => (
+                                    {altSummary.legs.filter((l: any) => l.mode !== 'walking').map((leg: any, li: number) => (
                                       <span key={li} className="flex items-center">
                                         {li > 0 && <span className="mx-1 text-zinc-500">→</span>}
                                         <span className="text-sm font-bold text-zinc-100">{leg.line || leg.mode}</span>
