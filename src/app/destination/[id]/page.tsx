@@ -90,6 +90,17 @@ export default async function EditDestinationPage({
       fetchError = "Could not fetch routes"
     }
 
+    // Deduplicate: keep only the first journey for each unique line pattern
+    const seenKeys = new Set<string>()
+    const uniqueJourneys = journeys
+      .map((journey: any) => ({ journey, summary: extractRouteSummary(journey) }))
+      .filter(({ summary }) => {
+        const key = summary.legs.filter((l: any) => l.line).map((l: any) => l.line).join('|')
+        if (seenKeys.has(key)) return false
+        seenKeys.add(key)
+        return true
+      })
+
     return (
       <div className="min-h-screen p-4 md:p-8">
         <div className="max-w-2xl mx-auto">
@@ -113,35 +124,32 @@ export default async function EditDestinationPage({
           )}
 
           <div className="space-y-4">
-            {journeys.map((journey, idx) => {
-              const summary = extractRouteSummary(journey)
-              return (
-                <form key={idx} action={selectRoute}>
-                  <input type="hidden" name="id" value={id} />
-                  <input type="hidden" name="name" value={name} />
-                  <input type="hidden" name="address" value={address} />
-                  <input type="hidden" name="stopId" value={stopId} />
-                  <input type="hidden" name="stopName" value={stopName} />
-                  <input type="hidden" name="refreshToken" value={journey.refreshToken ?? ""} />
-                  <input type="hidden" name="routeSummary" value={JSON.stringify(summary)} />
-                  <button
-                    type="submit"
-                    className="w-full text-left rounded-xl border border-zinc-700 bg-zinc-900 p-6 hover:border-zinc-500 cursor-pointer"
-                  >
-                    <div className="flex items-center flex-wrap gap-2">
-                      {summary.legs.filter((l: any) => l.line).map((leg, li) => (
-                        <span key={li} className="flex items-center">
-                          {li > 0 && <span className="mx-2 text-zinc-500">→</span>}
-                          <span className="bg-zinc-800 text-zinc-100 rounded px-2 py-1 text-sm font-bold border border-zinc-700">
-                            {leg.line}
-                          </span>
+            {uniqueJourneys.map(({ journey, summary }, idx) => (
+              <form key={idx} action={selectRoute}>
+                <input type="hidden" name="id" value={id} />
+                <input type="hidden" name="name" value={name} />
+                <input type="hidden" name="address" value={address} />
+                <input type="hidden" name="stopId" value={stopId} />
+                <input type="hidden" name="stopName" value={stopName} />
+                <input type="hidden" name="refreshToken" value={journey.refreshToken ?? ""} />
+                <input type="hidden" name="routeSummary" value={JSON.stringify(summary)} />
+                <button
+                  type="submit"
+                  className="w-full text-left rounded-xl border border-zinc-700 bg-zinc-900 p-6 hover:border-zinc-500 cursor-pointer"
+                >
+                  <div className="flex items-center flex-wrap gap-2">
+                    {summary.legs.filter((l: any) => l.line).map((leg: any, li: number) => (
+                      <span key={li} className="flex items-center">
+                        {li > 0 && <span className="mx-2 text-zinc-500">→</span>}
+                        <span className="bg-zinc-800 text-zinc-100 rounded px-2 py-1 text-sm font-bold border border-zinc-700">
+                          {leg.line}
                         </span>
-                      ))}
-                    </div>
-                  </button>
-                </form>
-              )
-            })}
+                      </span>
+                    ))}
+                  </div>
+                </button>
+              </form>
+            ))}
 
             {!fetchError && journeys.length === 0 && (
               <div className="text-center py-10 bg-zinc-900 rounded-xl border border-zinc-700 text-zinc-400">
